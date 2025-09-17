@@ -1,0 +1,21 @@
+{% load i18n %}
+{% blocktrans with name=testimonial.author_name site_name=site_name %}Dear {{ name }},
+
+Thank you for submitting your testimonial to {{ site_name }}. We appreciate you taking the time to share your feedback with us.
+
+After careful review, we regret to inform you that we're unable to publish your testimonial at this time.{% endblocktrans %}
+
+{% if reason %}
+{% trans "Reason:" %}
+{{ reason }}
+{% endif %}
+
+{% trans "Your submitted testimonial:" %}
+"{{ testimonial.content }}"
+
+{% blocktrans %}You're welcome to submit a new testimonial that addresses the concerns mentioned above. We value your feedback and would be happy to reconsider your revised submission.{% endblocktrans %}
+
+{% trans "Thank you for your understanding." %}
+
+{% trans "Best regards," %}
+{{ site_name }}

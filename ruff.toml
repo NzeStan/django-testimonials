@@ -1,0 +1,125 @@
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "migrations",
+]
+
+# Same as Black.
+line-length = 88
+indent-width = 4
+
+# Assume Python 3.8+
+target-version = "py38"
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
+select = [
+    # pycodestyle
+    "E",
+    "W",
+    # Pyflakes
+    "F",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+    # Django
+    "DJ",
+    # flake8-comprehensions
+    "C4",
+    # flake8-gettext
+    "INT",
+    # flake8-pie
+    "PIE",
+    # flake8-pytest-style
+    "PT",
+    # flake8-return
+    "RET",
+    # flake8-self
+    "SLF",
+    # flake8-type-checking
+    "TCH",
+    # tryceratops
+    "TRY",
+    # Ruff-specific rules
+    "RUF",
+]
+
+ignore = [
+    # Allow non-abstract empty methods in abstract base classes
+    "B027",
+    # Allow boolean positional values in function calls, like `dict.get(... True)`
+    "FBT003",
+    # Ignore checks for possible passwords
+    "S105", "S106", "S107",
+    # Ignore complexity
+    "C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915",
+    # Allow print statements (useful for debugging)
+    "T201",
+    # Django: Allow unordered body content in model
+    "DJ008",
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+[tool.ruff.lint.isort]
+# Django-specific isort configuration
+known-first-party = ["django_reusable_comments"]
+known-django = ["django"]
+section-order = ["future", "standard-library", "django", "third-party", "first-party", "local-folder"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can use magic values, assertions, and imports
+"**/tests/**/*" = ["PLR2004", "S101", "TID252"]
+"**/test_*" = ["PLR2004", "S101", "TID252"]
+"tests.py" = ["PLR2004", "S101", "TID252"]
+# Django settings files
+"**/settings/**/*" = ["F405", "F403"]
+"settings.py" = ["F405", "F403"]
+# Django manage.py
+"manage.py" = ["TRY003"]
+# Migration files
+"**/migrations/*" = ["E501", "RUF012"]

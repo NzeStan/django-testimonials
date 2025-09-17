@@ -1,0 +1,20 @@
+{% load i18n %}
+{% blocktrans with name=testimonial.author_name site_name=site_name %}Dear {{ name }},
+
+Thank you for your testimonial on {{ site_name }}. We've added a response to your feedback that we'd like to share with you.{% endblocktrans %}
+
+{% trans "Your testimonial:" %}
+"{{ testimonial.content }}"
+
+{% trans "Our response:" %}
+"{{ response }}"
+
+{% if site_url %}
+{% trans "You can view the complete testimonial and response at:" %}
+{{ site_url }}
+{% endif %}
+
+{% trans "We appreciate your feedback and thank you for being a valued customer." %}
+
+{% trans "Best regards," %}
+{{ site_name }}

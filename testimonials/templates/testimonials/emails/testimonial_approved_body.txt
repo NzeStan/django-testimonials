@@ -1,0 +1,17 @@
+{% load i18n %}
+{% blocktrans with name=testimonial.author_name site_name=site_name %}Dear {{ name }},
+
+Thank you for submitting your testimonial! We're pleased to inform you that your testimonial has been approved and is now published on {{ site_name }}.{% endblocktrans %}
+
+{% trans "Your testimonial:" %}
+"{{ testimonial.content }}"
+
+{% if site_url %}
+{% trans "You can view your published testimonial at:" %}
+{{ site_url }}
+{% endif %}
+
+{% trans "Thank you for sharing your experience with us!" %}
+
+{% trans "Best regards," %}
+{{ site_name }}

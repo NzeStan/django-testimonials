@@ -1,0 +1,19 @@
+{% load i18n %}
+{% blocktrans with site_name=site_name %}A new testimonial has been submitted on {{ site_name }}.{% endblocktrans %}
+
+{% trans "Details:" %}
+{% trans "Author:" %} {{ testimonial.author_name }}
+{% if testimonial.author_email %}{% trans "Email:" %} {{ testimonial.author_email }}{% endif %}
+{% if testimonial.company %}{% trans "Company:" %} {{ testimonial.company }}{% endif %}
+{% trans "Rating:" %} {{ testimonial.rating }}
+{% trans "Content:" %} {{ testimonial.content }}
+
+{% trans "Status:" %} {{ testimonial.get_status_display }}
+
+{% if site_url %}
+{% trans "You can review this testimonial at:" %}
+{{ site_url }}{% url 'admin:testimonials_testimonial_change' testimonial.id %}
+{% endif %}
+
+{% trans "Thank you," %}
+{{ site_name }}

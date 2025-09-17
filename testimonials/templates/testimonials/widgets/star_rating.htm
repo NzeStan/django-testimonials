@@ -1,0 +1,9 @@
+{% load i18n %}
+<div class="star-rating-container">
+    {% for widget in widget.subwidgets %}
+    <span class="star-rating-item">
+        {{ widget.tag }}
+        <label for="{{ widget.attrs.id }}" class="star-rating-label">{% if widget.data.selected %}★{% else %}☆{% endif %}</label>
+    </span>
+    {% endfor %}
+</div>

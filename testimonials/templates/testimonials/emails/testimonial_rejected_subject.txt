@@ -1,0 +1,1 @@
+{% load i18n %}{% trans "Regarding your testimonial submission" %} - {{ site_name }}
