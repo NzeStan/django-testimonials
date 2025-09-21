@@ -62,3 +62,6 @@ coverage.xml
 
 # Docs
 docs/_build/
+
+# testing
+django-package-test/

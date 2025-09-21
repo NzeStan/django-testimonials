@@ -70,13 +70,6 @@ class TestimonialSerializer(serializers.ModelSerializer):
     status_display = serializers.SerializerMethodField()
     source_display = serializers.SerializerMethodField()
     
-    author_id = serializers.PrimaryKeyRelatedField(
-        queryset=get_user_model().objects.all(),
-        source='author',
-        required=False,
-        allow_null=True,
-        write_only=True
-    )
     
     class Meta:
         model = Testimonial
@@ -86,7 +79,7 @@ class TestimonialSerializer(serializers.ModelSerializer):
             'category', 'category_id', 'source', 'source_display', 'status', 
             'status_display', 'is_anonymous', 'is_verified', 'media',
             'display_order', 'slug', 'website', 'social_media', 'response',
-            'created_at', 'updated_at', 'approved_at', 'author_id'
+            'created_at', 'updated_at', 'approved_at'
         ]
         read_only_fields = [
             'id', 'status_display', 'source_display', 'media', 'slug',
