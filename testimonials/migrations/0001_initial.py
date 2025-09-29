@@ -499,14 +499,14 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="testimonial",
             constraint=models.CheckConstraint(
-                condition=models.Q(("rating__gte", 1), ("rating__lte", 5)),
+                check=models.Q(("rating__gte", 1), ("rating__lte", 5)),
                 name="testimonial_rating_range",
             ),
         ),
         migrations.AddConstraint(
             model_name="testimonial",
             constraint=models.CheckConstraint(
-                condition=models.Q(
+                check=models.Q(
                     ("is_anonymous", True),
                     ("author_name", ""),
                     ("author_email", ""),

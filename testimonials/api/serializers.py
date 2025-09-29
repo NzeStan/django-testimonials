@@ -21,7 +21,7 @@ class TestimonialMediaSerializer(serializers.ModelSerializer):
             'id', 'file', 'testimonial', 'file_url', 'media_type', 'media_type_display', 
             'title', 'description', 'is_primary', 'order', 'created_at'
         ]
-        read_only_fields = ['id', 'created_at', 'media_type_display', 'file_url']
+        read_only_fields = ['id', 'created_at', 'media_type_display', 'file_url', 'media_type']
     
     def get_media_type_display(self, obj)-> str:
         """Get the display value for media_type."""
@@ -69,6 +69,7 @@ class TestimonialSerializer(serializers.ModelSerializer):
     media = TestimonialMediaSerializer(many=True, read_only=True)
     status_display = serializers.SerializerMethodField()
     source_display = serializers.SerializerMethodField()
+    author_display = serializers.SerializerMethodField()
     
     
     class Meta:
@@ -76,15 +77,22 @@ class TestimonialSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'author_name', 'author_email', 'author_phone', 'author_title',
             'company', 'location', 'avatar', 'title', 'content', 'rating',
-            'category', 'category_id', 'source', 'source_display', 'status', 
+            'category', 'category_id', 'source', 'source_display', 'status',
             'status_display', 'is_anonymous', 'is_verified', 'media',
             'display_order', 'slug', 'website', 'social_media', 'response',
-            'created_at', 'updated_at', 'approved_at'
+            'created_at', 'updated_at', 'approved_at',
+            # NEW:
+            'author_display',
         ]
         read_only_fields = [
             'id', 'status_display', 'source_display', 'media', 'slug',
-            'created_at', 'updated_at', 'approved_at', 'is_verified'
+            'created_at', 'updated_at', 'approved_at', 'is_verified',
+            # NEW:
+            'author_display',
         ]
+
+    def get_author_display(self, obj) -> str:
+        return obj.author_display
     
     def get_status_display(self, obj)-> str:
         """Get the display value for status."""
@@ -94,67 +102,90 @@ class TestimonialSerializer(serializers.ModelSerializer):
         """Get the display value for source."""
         return obj.get_source_display()
     
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+
+        if instance.is_anonymous:
+            viewer = getattr(request, 'user', None)
+            is_auth   = bool(viewer and viewer.is_authenticated)
+            is_staff  = bool(is_auth and (viewer.is_staff or viewer.is_superuser))
+            is_mod    = is_staff or bool(is_auth and getattr(viewer, 'groups', None)
+                                         and viewer.groups.filter(name__in=app_settings.MODERATION_ROLES).exists())
+            is_author = bool(is_auth and instance.author_id == viewer.id)
+
+            if not (is_author or is_mod):
+                # Replace user PII with masked display
+                data['author_name']  = instance.author_display
+                data['author_email'] = ''
+                data['author_phone'] = ''
+                data['avatar']       = None
+                # (optional) Hide website/socials if you consider them PII:
+                # data['website']      = ''
+                # data['social_media'] = {}
+
+        return data
+    
     def validate(self, data):
         """
-        Validate the testimonial data.
-        
-        - Ensure anonymous testimonials are allowed if specified.
-        - Set default status based on settings.
-        - Set default source if not provided.
-        - Handle author information prefilling.
+        Final validation for create/update via the base serializer.
+        - Force guests to anonymous.
+        - Enforce project policy on anonymous.
+        - Set status/source defaults.
+        - Ensure a non-empty author_name when anonymous.
+        - Prefill author/name/email for authenticated non-anonymous.
         """
-        is_anonymous = data.get('is_anonymous', False)
         request = self.context.get('request')
-        
-        # Validate anonymous testimonials
+        user = getattr(request, 'user', None)
+        is_authenticated = bool(user and user.is_authenticated)
+
+        # Force anonymous for guests
+        if not is_authenticated:
+            data['is_anonymous'] = True
+
+        is_anonymous = bool(data.get('is_anonymous', False))
+
+        # Policy: allow/disallow anonymous
         if is_anonymous and not app_settings.ALLOW_ANONYMOUS:
-            raise serializers.ValidationError(
-                {'is_anonymous': _("Anonymous testimonials are not allowed.")}
-            )
-        
-        # Set default status if not provided
+            raise serializers.ValidationError({
+                'is_anonymous': _("Anonymous testimonials are not allowed.")
+            })
+
+        # Defaults
         if 'status' not in data:
-            if app_settings.REQUIRE_APPROVAL:
-                data['status'] = TestimonialStatus.PENDING
-            else:
-                data['status'] = TestimonialStatus.APPROVED
-        
-        # Set default source if not provided
+            data['status'] = (
+                TestimonialStatus.PENDING if app_settings.REQUIRE_APPROVAL
+                else TestimonialStatus.APPROVED
+            )
         if 'source' not in data:
-            data['source'] = TestimonialSource.DEFAULT
-        
-        # Handle anonymous testimonials
+            data['source'] = TestimonialSource.WEBSITE
+
+        # Anonymous path: ensure display name, don't wipe stored PII/FK
         if is_anonymous:
-            data['author_name'] = _("Anonymous")
-            data['author_email'] = ""
-            data['author_phone'] = ""
-            data['author'] = None
-            
-            # Clear avatar if present
-            if 'avatar' in data:
-                data['avatar'] = None
-        else:
-            # Handle authenticated user data prefilling for non-anonymous testimonials
-            author = data.get('author')
-            
-            # If no author specified but user is authenticated, use current user
-            if not author and request and request.user.is_authenticated:
-                author = request.user
-                data['author'] = author
-            
-            # Prefill author information if author exists
-            if author:
-                # Set author name from user if not provided or blank
-                if not data.get('author_name') or str(data.get('author_name')).strip() == "":
-                    if hasattr(author, 'get_full_name') and author.get_full_name():
-                        data['author_name'] = author.get_full_name()
-                    else:
-                        data['author_name'] = author.username
-                
-                # Set author email from user if not provided or blank
-                if not data.get('author_email') and hasattr(author, 'email') and author.email:
-                    data['author_email'] = author.email
-        
+            name = (data.get('author_name') or "").strip()
+            if not name:
+                data['author_name'] = _("Anonymous")
+            # NOTE: do not null author/email/phone; masking is done in representation
+            return data
+
+        # Non-anonymous path: prefill from authenticated user
+        author = data.get('author')
+        if not author and is_authenticated:
+            author = user
+            data['author'] = author
+
+        if author:
+            author_name = (data.get('author_name') or "").strip()
+            if not author_name:
+                if hasattr(author, 'get_full_name') and author.get_full_name().strip():
+                    data['author_name'] = author.get_full_name().strip()
+                else:
+                    username = getattr(author, 'username', None)
+                    data['author_name'] = (username or f"User {getattr(author, 'id', '')}").strip()
+
+            if not data.get('author_email') and getattr(author, 'email', None):
+                data['author_email'] = author.email
+
         return data
     
     def create(self, validated_data):
@@ -206,116 +237,94 @@ class TestimonialCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Testimonial
         fields = [
+            'id',
             'author_name', 'author_email', 'author_phone', 'author_title',
             'company', 'location', 'avatar', 'title', 'content', 'rating',
             'category_id', 'is_anonymous', 'website', 'social_media'
         ]
-    
+        read_only_fields = ['id']
+
     def validate(self, data):
         """
-        Validate the testimonial data.
-        
-        - Ensure anonymous testimonials are allowed if specified.
-        - Set default status based on settings.
-        - Set default source if not provided.
-        - Handle author information prefilling.
+        Creation-specific validation.
+        - Force guests to anonymous.
+        - Enforce project policy on anonymous.
+        - Set status/source defaults.
+        - Ensure a non-empty author_name when anonymous.
+        - Prefill author/name/email for authenticated non-anonymous.
         """
-        is_anonymous = data.get('is_anonymous', False)
         request = self.context.get('request')
-        
-        # Validate anonymous testimonials
+        user = getattr(request, 'user', None)
+        is_authenticated = bool(user and user.is_authenticated)
+
+        # Force anonymous for guests
+        if not is_authenticated:
+            data['is_anonymous'] = True
+
+        is_anonymous = bool(data.get('is_anonymous', False))
+
+        # Policy: allow/disallow anonymous
         if is_anonymous and not app_settings.ALLOW_ANONYMOUS:
-            raise serializers.ValidationError(
-                {'is_anonymous': _("Anonymous testimonials are not allowed.")}
-            )
-        
-        # Set default status if not provided
+            raise serializers.ValidationError({
+                'is_anonymous': _("Anonymous testimonials are not allowed.")
+            })
+
+        # Defaults
         if 'status' not in data:
-            if app_settings.REQUIRE_APPROVAL:
-                data['status'] = TestimonialStatus.PENDING
-            else:
-                data['status'] = TestimonialStatus.APPROVED
-        
-        # Set default source if not provided
+            data['status'] = (
+                TestimonialStatus.PENDING if app_settings.REQUIRE_APPROVAL
+                else TestimonialStatus.APPROVED
+            )
         if 'source' not in data:
-            data['source'] = TestimonialSource.DEFAULT
-        
-        # Handle anonymous testimonials
+            data['source'] = TestimonialSource.WEBSITE
+
+        # Anonymous path: ensure display name, don't wipe stored PII/FK
         if is_anonymous:
-            data['author_name'] = _("Anonymous")
-            data['author_email'] = ""
-            data['author_phone'] = ""
-            data['author'] = None
-            
-            # Clear avatar if present
-            if 'avatar' in data:
-                data['avatar'] = None
-        else:
-            # Handle authenticated user data prefilling for non-anonymous testimonials
-            author = data.get('author')
-            
-            # If no author specified but user is authenticated, use current user
-            if not author and request and request.user.is_authenticated:
-                author = request.user
-                data['author'] = author
-            
-            # Prefill author information if author exists
-            if author:
-                # ALWAYS set author_name to avoid blank field error
-                author_name = data.get('author_name', '').strip()
-                if not author_name:  # Empty, None, or whitespace only
-                    if hasattr(author, 'get_full_name') and author.get_full_name().strip():
-                        data['author_name'] = author.get_full_name().strip()
-                    elif hasattr(author, 'username') and author.username.strip():
-                        data['author_name'] = author.username.strip()
-                    else:
-                        # Fallback to avoid blank field error since field doesn't allow blank
-                        data['author_name'] = f"User {author.id}"
-                
-                # Set author email from user if not provided or blank
-                if not data.get('author_email') and hasattr(author, 'email') and author.email:
-                    data['author_email'] = author.email
-            
-            # NOW check required fields AFTER auto-fill logic
-            if not data.get('author_name'):
-                raise serializers.ValidationError(
-                    {'author_name': _("Author name is required for non-anonymous testimonials.")}
-                )
-        
+            name = (data.get('author_name') or "").strip()
+            if not name:
+                data['author_name'] = _("Anonymous")
+            # NOTE: do not null author/email/phone; masking is done in representation
+            return data
+
+        # Non-anonymous path: prefill from authenticated user
+        author = data.get('author')
+        if not author and is_authenticated:
+            author = user
+            data['author'] = author
+
+        if author:
+            author_name = (data.get('author_name') or "").strip()
+            if not author_name:
+                if hasattr(author, 'get_full_name') and author.get_full_name().strip():
+                    data['author_name'] = author.get_full_name().strip()
+                else:
+                    username = getattr(author, 'username', None)
+                    data['author_name'] = (username or f"User {getattr(author, 'id', '')}").strip()
+
+            if not data.get('author_email') and getattr(author, 'email', None):
+                data['author_email'] = author.email
+
         return data
-    
+
     def create(self, validated_data):
-        """
-        Create a new testimonial.
-        
-        Sets status based on settings and logs the action.
-        """
         request = self.context.get('request')
-        
-        # Set status based on settings
-        if app_settings.REQUIRE_APPROVAL:
-            validated_data['status'] = TestimonialStatus.PENDING
-        else:
-            validated_data['status'] = TestimonialStatus.APPROVED
-        
-        # Set source to website
+
+        # Finalize status/source
+        validated_data['status'] = TestimonialStatus.PENDING if app_settings.REQUIRE_APPROVAL else TestimonialStatus.APPROVED
         validated_data['source'] = TestimonialSource.WEBSITE
-        
-        # Add IP address if available
+
+        # Add IP if available
         if request and request.META.get('REMOTE_ADDR'):
             validated_data['ip_address'] = request.META.get('REMOTE_ADDR')
-        
-        # Set author if user is authenticated
+
+        # Attach author if authenticated (even if anonymous, we KEEP the FK)
         if request and request.user.is_authenticated:
-            validated_data['author'] = request.user
-        
-        # Create the testimonial
+            validated_data.setdefault('author', request.user)
+
         testimonial = super().create(validated_data)
-        
-        # Log the action
+
         user = request.user if request and request.user.is_authenticated else None
         log_testimonial_action(testimonial, "create", user)
-        
         return testimonial
 
 

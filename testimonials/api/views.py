@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, filters, status, mixins
+from rest_framework import viewsets, permissions, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
@@ -9,6 +9,7 @@ from django.db.models import Q, Prefetch
 from django.core.cache import cache
 from django.views.decorators.cache import cache_page
 from django.utils.decorators import method_decorator
+from rest_framework.throttling import ScopedRateThrottle
 
 from ..models import Testimonial, TestimonialCategory, TestimonialMedia
 from ..constants import TestimonialStatus
@@ -78,7 +79,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     destroy:
         Delete a testimonial with comprehensive cleanup.
     """
-    
+    queryset = Testimonial.objects.optimized_for_api()
     serializer_class = TestimonialSerializer
     pagination_class = OptimizedPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -133,6 +134,12 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         elif self.action == 'create':
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticatedOrReadOnly()]
+    
+    def get_throttles(self):
+        if getattr(self, 'action', None) == 'create':
+            self.throttle_scope = 'testimonials_create'
+            return [ScopedRateThrottle()]
+        return super().get_throttles()
     
     @method_decorator(cache_page(app_settings.CACHE_TIMEOUT))
     def list(self, request, *args, **kwargs):
@@ -742,6 +749,7 @@ class TestimonialCategoryViewSet(viewsets.ModelViewSet):
         category = self.get_object()
         
         def get_category_testimonials():
+            # FIXED: Use proper queryset method
             testimonials = Testimonial.objects.filter(category=category).optimized_for_api()
             
             # Apply permission filtering
@@ -786,7 +794,8 @@ class TestimonialMediaViewSet(viewsets.ModelViewSet):
         """
         Optimized queryset with permission filtering and prefetching.
         """
-        queryset = super().get_queryset().optimized_for_api()
+        # FIXED: Use proper queryset method
+        queryset = TestimonialMedia.objects.optimized_for_api()
         user = self.request.user
         
         # Check admin/moderator permissions
@@ -795,13 +804,13 @@ class TestimonialMediaViewSet(viewsets.ModelViewSet):
         elif user.is_authenticated:
             # Users see media for published testimonials and their own
             return queryset.filter(
-                Q(testimonial__status__in=[TestimonialStatus.APPROVED, TestimonialStatus.FEATURED]) |
+                Q(testimonial__status__in=TestimonialStatus.get_published_statuses()) |
                 Q(testimonial__author=user)
             )
         else:
             # Anonymous users see only media for published testimonials
             return queryset.filter(
-                testimonial__status__in=[TestimonialStatus.APPROVED, TestimonialStatus.FEATURED]
+                testimonial__status__in=TestimonialStatus.get_published_statuses()
             )
     
     def is_moderator_or_admin(self, user):

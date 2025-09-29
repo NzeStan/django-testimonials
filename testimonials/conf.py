@@ -23,6 +23,48 @@ class TestimonialsSettings:
         Default is 5.
         """
         return getattr(settings, "TESTIMONIALS_MAX_RATING", 5)
+    
+    @property
+    def MIN_RATING(self):
+        """
+        Minimum rating value.
+        Default is 1.
+        """
+        return getattr(settings, "TESTIMONIALS_MIN_RATING", 1)
+
+    
+    @property
+    def MIN_TESTIMONIAL_LENGTH(self):
+        """
+        Minimum length for testimonial content in characters.
+        Default is 10 characters.
+        """
+        return getattr(settings, "TESTIMONIALS_MIN_CONTENT_LENGTH", 10)
+
+    @property
+    def MAX_TESTIMONIAL_LENGTH(self):
+        """
+        Maximum length for testimonial content in characters.
+        Default is 5000 characters.
+        """
+        return getattr(settings, "TESTIMONIALS_MAX_CONTENT_LENGTH", 5000)
+    
+    @property
+    def VALIDATE_CONTENT_QUALITY(self):
+        """
+        Whether to validate content quality (no spam, etc.).
+        Default is True.
+        """
+        return getattr(settings, "TESTIMONIALS_VALIDATE_CONTENT_QUALITY", True)
+
+    @property
+    def FORBIDDEN_WORDS(self):
+        """
+        List of forbidden words in testimonial content.
+        """
+        return getattr(settings, "TESTIMONIALS_FORBIDDEN_WORDS", [
+            'spam', 'fake', 'bot', 'test123'  # Add your forbidden words
+        ])
 
     @property
     def REQUIRE_APPROVAL(self):
@@ -31,7 +73,7 @@ class TestimonialsSettings:
         Default is True.
         """
         return getattr(settings, "TESTIMONIALS_REQUIRE_APPROVAL", True)
-
+    
     @property
     def ALLOW_ANONYMOUS(self):
         """
@@ -209,6 +251,21 @@ class TestimonialsSettings:
         return getattr(settings, "TESTIMONIALS_MAX_FILE_SIZE", 10 * 1024 * 1024)
     
     @property
+    def MAX_AVATAR_SIZE(self):
+        """Maximum avatar size in bytes (default 5MB)"""
+        return getattr(settings, "TESTIMONIALS_MAX_AVATAR_SIZE", 5 * 1024 * 1024)
+
+    @property  
+    def MAX_IMAGE_WIDTH(self):
+        """Maximum image width in pixels"""
+        return getattr(settings, "TESTIMONIALS_MAX_IMAGE_WIDTH", 2000)
+
+    @property
+    def MAX_IMAGE_HEIGHT(self):
+        """Maximum image height in pixels"""
+        return getattr(settings, "TESTIMONIALS_MAX_IMAGE_HEIGHT", 2000)
+    
+    @property
     def ALLOWED_FILE_EXTENSIONS(self):
         """
         Allowed file extensions for media uploads.
@@ -256,6 +313,15 @@ class TestimonialsSettings:
         Default is 1000.
         """
         return getattr(settings, "TESTIMONIALS_SEARCH_RESULTS_LIMIT", 1000)
+    
+    @property
+    def DEFAULT_PHONE_REGION(self):
+        """
+        Default region for phone number validation.
+        This is passed to PhoneNumberField(region=...).
+        Default is "NG" (Nigeria).
+        """
+        return getattr(settings, "TESTIMONIALS_DEFAULT_PHONE_REGION", "NG")
 
 
 app_settings = TestimonialsSettings()

@@ -11,7 +11,7 @@ class TestimonialFilter(django_filters.FilterSet):
     Filter for testimonials.
     """
     status = django_filters.ChoiceFilter(
-        choices=TestimonialStatus.CHOICES,
+        choices=TestimonialStatus.choices,
         help_text=_("Filter by testimonial status")
     )
     
@@ -38,7 +38,7 @@ class TestimonialFilter(django_filters.FilterSet):
     )
     
     source = django_filters.ChoiceFilter(
-        choices=TestimonialSource.CHOICES,
+        choices=TestimonialSource.choices,
         help_text=_("Filter by testimonial source")
     )
     

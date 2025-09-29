@@ -90,7 +90,7 @@ class TestTestimonialForm:
         
         # Status field should be a HiddenInput for non-staff users
         assert form.fields['status'].widget.__class__.__name__ == 'HiddenInput'
-        assert form.fields['status'].initial == TestimonialStatus.DEFAULT
+        assert form.fields['status'].initial == TestimonialStatus.PENDING
     
     def test_save_method(self, user, category):
         """Test the form's save method."""
@@ -384,7 +384,7 @@ class TestTestimonialFilterForm:
         form = TestimonialFilterForm()
         
         # Should have empty choice plus all statuses
-        assert len(form.fields['status'].choices) == len(TestimonialStatus.CHOICES) + 1
+        assert len(form.fields['status'].choices) == len(TestimonialStatus.choices) + 1
         
         # First choice should be empty
         assert form.fields['status'].choices[0][0] == ''

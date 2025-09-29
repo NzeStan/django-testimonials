@@ -9,7 +9,7 @@ from django.utils.translation import gettext_lazy as _
 from django.core.cache import cache
 from django.core.files.base import ContentFile
 from .conf import app_settings
-from .exceptions import TestimonialMediaError
+
 
 # Set up logging
 logger = logging.getLogger("testimonials")
@@ -212,46 +212,14 @@ def get_unique_slug(model_instance, slug_field, max_length=50):
     return unique_slug
 
 
-# === VALIDATION UTILITIES ===
-
-def validate_rating(value, max_rating=None):
-    """
-    Validate a rating value with improved error messages.
-    
-    Args:
-        value: The rating value to validate
-        max_rating: The maximum allowed rating value
-        
-    Raises:
-        ValidationError: If the rating is invalid
-    """
-    if max_rating is None:
-        max_rating = app_settings.MAX_RATING
-        
-    if not isinstance(value, (int, float)):
-        raise ValidationError(_("Rating must be a number"))
-    
-    if value < 1 or value > max_rating:
-        raise ValidationError(
-            _("Rating must be between 1 and %(max_rating)s") % {'max_rating': max_rating}
-        )
-
-
 # === FILE HANDLING UTILITIES ===
 
 def generate_upload_path(instance, filename):
-    """
-    Generate a unique upload path for testimonial media files with better organization.
-    
-    Args:
-        instance: The model instance the file is attached to
-        filename: The original filename
-        
-    Returns:
-        A unique file path
-    """
-    # Get file extension
-    ext = filename.split('.')[-1].lower()
+    """Generate a unique upload path for testimonial media files."""
+    # Sanitize the original filename extension
+    ext = os.path.splitext(filename)[1].lower().lstrip('.')
+    if not ext:
+        ext = 'bin'  # fallback for files without extension
     
     # Generate a UUID filename
     unique_filename = f"{uuid.uuid4()}.{ext}"
@@ -275,16 +243,9 @@ def generate_upload_path(instance, filename):
             unique_filename
         )
 
-
 def get_file_type(file_obj):
     """
     Determine the type of a file based on its extension with better categorization.
-    
-    Args:
-        file_obj: A file-like object or path
-        
-    Returns:
-        The media type as a string
     """
     from .constants import TestimonialMediaType
 
@@ -293,18 +254,16 @@ def get_file_type(file_obj):
     else:
         filename = str(file_obj)
     
+    # Handle cases where filename might not have an extension
+    if '.' not in filename:
+        raise ValidationError(_("File must have an extension"))
+    
     ext = filename.split('.')[-1].lower()
     
     # Use the allowed extensions from settings
     allowed_extensions = app_settings.ALLOWED_FILE_EXTENSIONS
     
-    # Define file types by extension
-    image_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']
-    video_extensions = ['mp4', 'webm', 'mov', 'avi', 'mkv']
-    audio_extensions = ['mp3', 'wav', 'ogg', 'aac', 'flac']
-    document_extensions = ['pdf', 'doc', 'docx', 'txt', 'rtf']
-    
-    # Check if extension is allowed
+    # Check if extension is allowed first
     if ext not in allowed_extensions:
         raise ValidationError(
             _("File type '%(ext)s' not allowed. Allowed types: %(types)s") % {
@@ -313,42 +272,21 @@ def get_file_type(file_obj):
             }
         )
     
-    if ext in image_extensions:
-        return TestimonialMediaType.IMAGE
-    elif ext in video_extensions:
-        return TestimonialMediaType.VIDEO
-    elif ext in audio_extensions:
-        return TestimonialMediaType.AUDIO
-    elif ext in document_extensions:
-        return TestimonialMediaType.DOCUMENT
-    else:
-        # Default to document type for unknown but allowed extensions
-        logger.warning(f"Unknown file extension for testimonial media: {ext}")
-        return TestimonialMediaType.DOCUMENT
-
-
-def validate_file_size(file_obj):
-    """
-    Validate file size against configured maximum with better error messages.
+    # Define file types by extension (move this to constants/settings for better maintainability)
+    type_mapping = {
+        TestimonialMediaType.IMAGE: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'],
+        TestimonialMediaType.VIDEO: ['mp4', 'webm', 'mov', 'avi', 'mkv'],
+        TestimonialMediaType.AUDIO: ['mp3', 'wav', 'ogg', 'aac', 'flac'],
+        TestimonialMediaType.DOCUMENT: ['pdf', 'doc', 'docx', 'txt', 'rtf'],
+    }
     
-    Args:
-        file_obj: File object to validate
-        
-    Raises:
-        ValidationError: If file is too large
-    """
-    max_size = app_settings.MAX_FILE_SIZE
+    for media_type, extensions in type_mapping.items():
+        if ext in extensions:
+            return media_type
     
-    if hasattr(file_obj, 'size') and file_obj.size > max_size:
-        max_size_mb = max_size / (1024 * 1024)
-        current_size_mb = file_obj.size / (1024 * 1024)
-        
-        raise ValidationError(
-            _("File is too large (%(current)0.1f MB). Maximum size is %(max)0.1f MB.") % {
-                'current': current_size_mb,
-                'max': max_size_mb
-            }
-        )
+    # Default to document type for unknown but allowed extensions
+    logger.warning(f"Unknown file extension for testimonial media: {ext}")
+    return TestimonialMediaType.DOCUMENT
 
 
 # === THUMBNAIL UTILITIES ===

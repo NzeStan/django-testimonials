@@ -1,18 +1,81 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.black]
-line-length = 88
-target-version = ['py38']
-include = '\.pyi?$'
+[project]
+name = "django-testimonials"
+version = "1.0.0"
+description = "High-performance Django package for managing customer testimonials at scale"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "NzeStan", email = "your-email@example.com"}
+]
+maintainers = [
+    {name = "NzeStan", email = "your-email@example.com"}
+]
+keywords = ["django", "testimonials", "reviews", "feedback", "api", "rest"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Framework :: Django :: 3.2",
+    "Framework :: Django :: 4.0",
+    "Framework :: Django :: 4.1",
+    "Framework :: Django :: 4.2",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "Django>=3.2,<5.0",
+    "djangorestframework>=3.12.0",
+    "django-filter>=22.1",
+    "django-phonenumber-field[phonenumbers]>=7.0.0",
+    "Pillow>=8.0.0",
+]
 
-[tool.isort]
-profile = "black"
-multi_line_output = 3
+[project.optional-dependencies]
+performance = [
+    "django-redis>=5.2.0",
+    "celery[redis]>=5.2.0",
+    "redis>=4.3.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-django>=4.5.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "flake8>=5.0.0",
+    "pre-commit>=2.20.0",
+    "factory-boy>=3.2.0",
+    "Faker>=15.0.0",
+    "django-redis>=5.2.0",
+    "celery[redis]>=5.2.0",
+    "redis>=4.3.0",
+]
 
-[tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "tests.settings"
-python_files = "test_*.py"
-django_find_project = true
-testpaths = ["tests"]
+[project.urls]
+Homepage = "https://github.com/NzeStan/django-testimonials"
+Documentation = "https://django-testimonials.readthedocs.io/"
+Repository = "https://github.com/NzeStan/django-testimonials"
+"Bug Tracker" = "https://github.com/NzeStan/django-testimonials/issues"
+
+[tool.setuptools.packages.find]
+include = ["testimonials*"]
+
+[tool.setuptools.package-data]
+testimonials = [
+    "templates/**/*.html",
+    "static/**/*",
+    "locale/**/*",
+]

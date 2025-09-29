@@ -125,7 +125,7 @@ class TestimonialAdmin(admin.ModelAdmin):
         }
         
         color = status_colors.get(obj.status, '#a4b0be')
-        status_display = dict(TestimonialStatus.CHOICES).get(obj.status, obj.status)
+        status_display = dict(TestimonialStatus.choices).get(obj.status, obj.status)
         
         return format_html(
             '<span style="background-color: {}; padding: 3px 8px; border-radius: 3px; color: #fff;">{}</span>',

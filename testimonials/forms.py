@@ -49,12 +49,12 @@ class TestimonialForm(forms.ModelForm):
         # Hide status field for non-staff users
         if not (self.user and self.user.is_staff):
             self.fields['status'].widget = forms.HiddenInput()
-            self.fields['status'].initial = TestimonialStatus.DEFAULT
+            self.fields['status'].initial = TestimonialStatus.PENDING
         
         # Hide source field for non-staff users
         if not (self.user and self.user.is_staff):
             self.fields['source'].widget = forms.HiddenInput()
-            self.fields['source'].initial = TestimonialSource.DEFAULT
+            self.fields['source'].initial = TestimonialSource.WEBSITE
         
         # Make category field more user-friendly
         if 'category' in self.fields:
@@ -262,7 +262,7 @@ class TestimonialFilterForm(forms.Form):
     Form for filtering testimonials in the admin interface.
     """
     status = forms.ChoiceField(
-        choices=[('', _('All Statuses'))] + list(TestimonialStatus.CHOICES),
+        choices=[('', _('All Statuses'))] + list(TestimonialStatus.choices),
         required=False
     )
     

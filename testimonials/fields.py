@@ -38,8 +38,8 @@ class StatusField(forms.ChoiceField):
     """
     
     def __init__(self, *args, **kwargs):
-        kwargs.setdefault('choices', TestimonialStatus.CHOICES)
-        kwargs.setdefault('initial', TestimonialStatus.DEFAULT)
+        kwargs.setdefault('choices', TestimonialStatus.choices)
+        kwargs.setdefault('initial', TestimonialStatus.PENDING)
         super().__init__(*args, **kwargs)
 
 
@@ -51,8 +51,8 @@ class SourceField(forms.ChoiceField):
     """
     
     def __init__(self, *args, **kwargs):
-        kwargs.setdefault('choices', TestimonialSource.CHOICES)
-        kwargs.setdefault('initial', TestimonialSource.DEFAULT)
+        kwargs.setdefault('choices', TestimonialSource.choices)
+        kwargs.setdefault('initial', TestimonialSource.WEBSITE)
         super().__init__(*args, **kwargs)
 
 

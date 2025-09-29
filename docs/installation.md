@@ -40,8 +40,11 @@ cd django-testimonials
 # Install in development mode
 pip install -e .
 
-# Or install with optional dependencies
-pip install -e .[performance,dev]
+# install with optional dependencies
+pip install -e .[performance]
+
+# Development installation with testing tools
+pip install -e .[dev]
 ```
 
 ### **Method 3: Using Poetry**
@@ -52,6 +55,9 @@ poetry add django-testimonials
 
 # With optional dependencies
 poetry add django-testimonials[performance]
+
+# Development installation with testing tools
+poetry add django-testimonials[dev]
 ```
 
 ### **Method 4: Using pipenv**
@@ -62,6 +68,10 @@ pipenv install django-testimonials
 
 # With optional dependencies
 pipenv install django-testimonials[performance]
+
+# Development installation with testing tools
+pipenv install django-testimonials[dev]
+
 ```
 
 ## ⚙️ **Basic Setup**

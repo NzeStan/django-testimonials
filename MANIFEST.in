@@ -1,8 +1,20 @@
-include LICENSE
 include README.md
+include LICENSE
 include CHANGELOG.md
-recursive-include testimonials/static *
+include requirements.txt
+include requirements-dev.txt
 recursive-include testimonials/templates *
+recursive-include testimonials/static *
 recursive-include testimonials/locale *
+recursive-include testimonials/migrations *
+recursive-include docs *
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
+recursive-exclude * *.orig
+recursive-exclude * *.rej
+exclude .gitignore
+exclude .pre-commit-config.yaml
+exclude pytest.ini
+exclude tox.ini
+exclude .coverage
+exclude .env*

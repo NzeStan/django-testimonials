@@ -1,187 +1,144 @@
-import re
-from django.core.validators import RegexValidator, MinValueValidator, MaxValueValidator
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 from .conf import app_settings
-from .exceptions import TestimonialValidationError
+from decimal import Decimal, InvalidOperation
 
-
-class NoHTMLValidator:
-    """
-    Validator that prohibits HTML tags in the input.
-    """
-    def __init__(self, message=None):
-        self.message = message or _("HTML tags are not allowed.")
-        self.html_pattern = re.compile(r'<[^>]*>')
-        
-    def __call__(self, value):
-        if value and self.html_pattern.search(value):
-            raise ValidationError(self.message)
-        return value
-
-
-class NoURLValidator:
-    """
-    Validator that prohibits URLs in the input.
-    """
-    def __init__(self, message=None):
-        self.message = message or _("URLs are not allowed.")
-        self.url_pattern = re.compile(
-            r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
-        )
-        
-    def __call__(self, value):
-        if value and self.url_pattern.search(value):
-            raise ValidationError(self.message)
-        return value
-
-
-class NoEmailValidator:
-    """
-    Validator that prohibits email addresses in the input.
-    """
-    def __init__(self, message=None):
-        self.message = message or _("Email addresses are not allowed.")
-        self.email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
-        
-    def __call__(self, value):
-        if value and self.email_pattern.search(value):
-            raise ValidationError(self.message)
-        return value
-
-
-class NoPhoneValidator:
-    """
-    Validator that prohibits phone numbers in the input.
-    """
-    def __init__(self, message=None):
-        self.message = message or _("Phone numbers are not allowed.")
-        self.phone_pattern = re.compile(r'(\+\d{1,3}[\s.-])?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}')
-        
-    def __call__(self, value):
-        if value and self.phone_pattern.search(value):
-            raise ValidationError(self.message)
-        return value
-
-
-class ProfanityValidator:
-    """
-    Basic validator that checks for common profanity in the input.
-    
-    Note: This is a very basic implementation. For production use,
-    consider using a more comprehensive profanity detection library.
-    """
-    def __init__(self, message=None, custom_words=None):
-        self.message = message or _("This text contains inappropriate language.")
-        # Very basic list - in a real implementation, this would be more comprehensive
-        self.profanity_list = {
-            'profanity1', 'profanity2', 'profanity3'
-        }
-        
-        if custom_words:
-            if isinstance(custom_words, (list, tuple, set)):
-                self.profanity_list.update(custom_words)
-            else:
-                raise TestimonialValidationError("custom_words must be a list, tuple, or set")
-        
-    def __call__(self, value):
-        if not value:
-            return value
-            
-        # Convert to lowercase for case-insensitive matching
-        value_lower = value.lower()
-        
-        # Check each word in the value
-        words = re.findall(r'\b\w+\b', value_lower)
-        for word in words:
-            if word in self.profanity_list:
-                raise ValidationError(self.message)
-                
-        return value
 
 
 def validate_rating(value):
     """
     Validator for testimonial ratings.
     
-    Ensures the rating is between 1 and the configured maximum rating.
+    Ensures the rating is between configured min and max values.
     """
+    min_rating = app_settings.MIN_RATING
     max_rating = app_settings.MAX_RATING
     
     if not isinstance(value, (int, float)):
         raise ValidationError(_("Rating must be a number."))
-        
-    if value < 1:
-        raise ValidationError(_("Rating must be at least 1."))
+    
+    # Convert to int if it's a whole number float
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    elif isinstance(value, float):
+        raise ValidationError(_("Rating must be a whole number."))
+    
+    if value < min_rating:
+        raise ValidationError(
+            _("Rating must be at least %(min_rating)d.") % {'min_rating': min_rating}
+        )
         
     if value > max_rating:
-        raise ValidationError(_("Rating cannot exceed {max_rating}.").format(max_rating=max_rating))
+        raise ValidationError(
+            _("Rating cannot exceed %(max_rating)d.") % {'max_rating': max_rating}
+        )
         
     return value
 
 
 def validate_testimonial_content(value):
     """
-    Validate testimonial content for minimum length and other criteria.
+    Validate testimonial content for minimum/maximum length and other criteria.
+    Configurable via app settings.
     """
-    if not value:
-        raise ValidationError(_("Testimonial content is required."))
-        
-    # Check minimum length (adjust as needed)
-    if len(value) < 10:
-        raise ValidationError(_("Testimonial content must be at least 10 characters long."))
-        
-    return value
-
-
-def validate_file_size(file_obj, max_size_mb=5):
-    """
-    Validate that a file doesn't exceed the maximum size.
     
-    Args:
-        file_obj: The file to validate
-        max_size_mb: Maximum size in megabytes
-        
-    Raises:
-        ValidationError: If the file is too large
-    """
-    max_size_bytes = max_size_mb * 1024 * 1024  # Convert MB to bytes
-    
-    if file_obj.size > max_size_bytes:
+    # Check minimum length
+    min_length = app_settings.MIN_TESTIMONIAL_LENGTH
+    if value and len(value.strip()) < min_length:
         raise ValidationError(
-            _("File is too large. Maximum size is {max_size} MB.").format(max_size=max_size_mb)
+            _("Testimonial content must be at least %(min_length)d characters long.") % {
+                'min_length': min_length
+            }
         )
-        
-    return file_obj
-
-
-def validate_file_extension(file_obj, allowed_extensions=None):
-    """
-    Validate that a file has an allowed extension.
     
-    Args:
-        file_obj: The file to validate
-        allowed_extensions: List of allowed extensions (without the dot)
-        
-    Raises:
-        ValidationError: If the file has an invalid extension
-    """
-    if not allowed_extensions:
-        # Default allowed extensions
-        allowed_extensions = [
-            'jpg', 'jpeg', 'png', 'gif', 'webp',  # Images
-            'mp4', 'webm', 'mov',  # Videos
-            'mp3', 'wav', 'ogg',  # Audio
-            'pdf', 'doc', 'docx', 'txt'  # Documents
-        ]
-    
-    ext = file_obj.name.split('.')[-1].lower()
-    
-    if ext not in allowed_extensions:
+    # Check maximum length
+    max_length = app_settings.MAX_TESTIMONIAL_LENGTH
+    if value and len(value.strip()) > max_length:
         raise ValidationError(
-            _("File type not supported. Allowed types: {extensions}").format(
-                extensions=", ".join(allowed_extensions)
+            _("Testimonial content cannot exceed %(max_length)d characters.") % {
+                'max_length': max_length
+            }
+        )
+    
+    if app_settings.VALIDATE_CONTENT_QUALITY and value:
+        # Check for forbidden words
+        forbidden_words = app_settings.FORBIDDEN_WORDS
+        value_lower = value.lower()
+        
+        for word in forbidden_words:
+            if word.lower() in value_lower:
+                raise ValidationError(
+                    _("Testimonial content contains inappropriate language.")
+                )
+        
+        # Check for excessive repetition (basic spam detection)
+        words = value.split()
+        if len(words) > 5 and len(set(words)) / len(words) < 0.3:  # Less than 30% unique words
+            raise ValidationError(
+                _("Testimonial content appears to contain excessive repetition.")
             )
-        )
+    
+    return value.strip() if value else value
+
+
+def create_file_size_validator(max_size_mb=None, file_type="file"):
+    """Factory function to create file size validators with custom limits"""
+    # Use app_settings if no custom size provided
+    if max_size_mb is None:
+        max_size_bytes = app_settings.MAX_FILE_SIZE
+        max_size_mb = max_size_bytes / (1024 * 1024)
+    else:
+        max_size_bytes = max_size_mb * 1024 * 1024
+    
+    def validator(file):
+        if file.size > max_size_bytes:
+            current_size_mb = file.size / (1024 * 1024)
+            raise ValidationError(
+                _("%(file_type)s is too large (%(current)0.1f MB). "
+                  "Maximum size is %(max)0.1f MB.") % {
+                    'file_type': file_type.title(),
+                    'current': current_size_mb,
+                    'max': max_size_mb
+                }
+            )
+    return validator
+
+def create_avatar_size_validator():
+    """Create validator specifically for avatars using settings"""
+    max_size_bytes = getattr(app_settings, 'MAX_AVATAR_SIZE', app_settings.MAX_FILE_SIZE)
+    max_size_mb = max_size_bytes / (1024 * 1024)
+    
+    def validator(file):
+        if file.size > max_size_bytes:
+            current_size_mb = file.size / (1024 * 1024)
+            raise ValidationError(
+                _("Avatar is too large (%(current)0.1f MB). "
+                  "Maximum size is %(max)0.1f MB.") % {
+                    'current': current_size_mb,
+                    'max': max_size_mb
+                }
+            )
+    return validator
+
+def image_dimension_validator(image):
+    """Validate image dimensions using settings"""
+    max_width = getattr(app_settings, 'MAX_IMAGE_WIDTH', 2000)
+    max_height = getattr(app_settings, 'MAX_IMAGE_HEIGHT', 2000)
+    
+    try:
+        from PIL import Image
+        img = Image.open(image)
+        width, height = img.size
         
-    return file_obj
+        if width > max_width or height > max_height:
+            raise ValidationError(
+                _("Image dimensions too large (%(width)dx%(height)d). "
+                  "Maximum allowed is %(max_width)dx%(max_height)d pixels.") % {
+                    'width': width,
+                    'height': height,
+                    'max_width': max_width,
+                    'max_height': max_height
+                }
+            )
+    except Exception as e:
+        raise ValidationError(_("Invalid image file: %(error)s") % {'error': str(e)})
