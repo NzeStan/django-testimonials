@@ -4,12 +4,11 @@ These tasks handle background processing for emails, media, and other heavy oper
 """
 
 import logging
-from typing import Optional, Dict, Any
-from django.core.mail import send_mail, mail_managers
+from typing import Dict, Any
+from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.conf import settings
 from django.utils import timezone
-from django.core.files.base import ContentFile
 from .conf import app_settings
 from .utils import generate_thumbnails, log_testimonial_action, invalidate_testimonial_cache
 
@@ -263,12 +262,7 @@ def bulk_moderate_testimonials(self, testimonial_ids: list, action: str,
                               user_id: int = None, extra_data: Dict[str, Any] = None):
     """
     Perform bulk moderation actions on testimonials.
-    
-    Args:
-        testimonial_ids: List of testimonial IDs to moderate
-        action: Action to perform (approve, reject, feature, archive)
-        user_id: ID of user performing the action
-        extra_data: Additional data (e.g., rejection_reason)
+    FIXED: Added verify and unverify actions.
     """
     try:
         from .models import Testimonial
@@ -284,8 +278,6 @@ def bulk_moderate_testimonials(self, testimonial_ids: list, action: str,
         
         for i in range(0, len(testimonial_ids), batch_size):
             batch_ids = testimonial_ids[i:i + batch_size]
-            
-            # Get testimonials in this batch
             testimonials = Testimonial.objects.filter(id__in=batch_ids)
             
             for testimonial in testimonials:
@@ -305,6 +297,13 @@ def bulk_moderate_testimonials(self, testimonial_ids: list, action: str,
                 elif action == 'archive':
                     testimonial.status = TestimonialStatus.ARCHIVED
                 
+                # FIXED: Added verify and unverify
+                elif action == 'verify':
+                    testimonial.is_verified = True
+                    
+                elif action == 'unverify':
+                    testimonial.is_verified = False
+                
                 testimonial.save()
                 processed_count += 1
                 
@@ -319,7 +318,6 @@ def bulk_moderate_testimonials(self, testimonial_ids: list, action: str,
         
     except Exception as exc:
         logger.error(f"Bulk moderation failed for action {action}: {exc}")
-        
         if self.request.retries < self.max_retries:
             raise self.retry(exc=exc, countdown=120)
 

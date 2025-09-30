@@ -294,16 +294,17 @@ class TestimonialQuerySet(models.QuerySet):
             
             # Category distribution
             category_stats = list(
-                self.values('category__name', 'category__slug')
+                self.values('category__name', 'category__id')
                 .annotate(
                     count=Count('id'),
+                    approved=Count(
+                        'id',
+                        filter=Q(status__in=[TestimonialStatus.APPROVED, TestimonialStatus.FEATURED])
+                    ),
                     avg_rating=Avg('rating'),
-                    verified_count=Count(Case(
-                        When(is_verified=True, then=1),
-                        output_field=IntegerField()
-                    ))
+                    # FIXED: Proper verified count
+                    verified_count=Count('id', filter=Q(is_verified=True))
                 )
-                .filter(category__isnull=False)
                 .order_by('-count')
             )
             
@@ -378,10 +379,8 @@ class TestimonialQuerySet(models.QuerySet):
                 .annotate(
                     count=Count('id'),
                     avg_rating=Avg('rating'),
-                    verified_count=Count(Case(
-                        When(is_verified=True, then=1),
-                        output_field=IntegerField()
-                    ))
+                    # FIXED: Count individual verified testimonials, not test truthiness
+                    verified_count=Count('id', filter=Q(is_verified=True))
                 )
                 .order_by('-count')[:10]
             )

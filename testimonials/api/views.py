@@ -5,14 +5,14 @@ from rest_framework.pagination import PageNumberPagination
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from django.db.models import Q, Prefetch
+from django.db.models import Q
 from django.core.cache import cache
 from django.views.decorators.cache import cache_page
 from django.utils.decorators import method_decorator
 from rest_framework.throttling import ScopedRateThrottle
 
 from ..models import Testimonial, TestimonialCategory, TestimonialMedia
-from ..constants import TestimonialStatus
+from ..constants import TestimonialStatus, TestimonialMediaType
 from ..conf import app_settings
 from ..utils import (
     log_testimonial_action, 
@@ -35,6 +35,8 @@ from .permissions import (
     CanModerateTestimonial
 )
 from .filters import TestimonialFilter
+from django.db.models import Count
+
 
 
 class OptimizedPagination(PageNumberPagination):
@@ -367,6 +369,132 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         
         return get_stats()
     
+    @action(detail=True, methods=['get'])
+    def stats_detail(self, request, pk=None):
+        """
+        Get detailed statistics for a specific testimonial.
+        Includes media count, engagement metrics, and related data.
+        """
+        testimonial = self.get_object()
+        
+        def get_single_testimonial_stats():
+           
+            # Get the testimonial with related data
+            testimonial_data = Testimonial.objects.filter(pk=testimonial.pk).annotate(
+                # Media statistics
+                total_media=Count('media'),
+                total_images=Count('media', filter=Q(media__media_type=TestimonialMediaType.IMAGE)),
+                total_videos=Count('media', filter=Q(media__media_type=TestimonialMediaType.VIDEO)),
+                total_audios=Count('media', filter=Q(media__media_type=TestimonialMediaType.AUDIO)),
+                total_documents=Count('media', filter=Q(media__media_type=TestimonialMediaType.DOCUMENT)),
+                has_primary_media=Count('media', filter=Q(media__is_primary=True)),
+            ).first()
+            
+            # Calculate time metrics
+            age_in_days = (timezone.now() - testimonial.created_at).days
+            time_to_approval = None
+            if testimonial.approved_at:
+                time_to_approval = (testimonial.approved_at - testimonial.created_at).total_seconds() / 3600  # hours
+            
+            # Get category info
+            category_info = None
+            if testimonial.category:
+                category_info = {
+                    'id': testimonial.category.id,
+                    'name': testimonial.category.name,
+                    'slug': testimonial.category.slug,
+                }
+            
+            # Get author info (respect privacy for anonymous)
+            author_info = None
+            if not testimonial.is_anonymous:
+                if testimonial.author:
+                    author_info = {
+                        'user_id': testimonial.author.id,
+                        'username': testimonial.author.username,
+                        'total_testimonials': Testimonial.objects.filter(author=testimonial.author).count(),
+                    }
+                else:
+                    author_info = {
+                        'user_id': None,
+                        'username': None,
+                        'total_testimonials': 1,
+                    }
+            
+            # Media breakdown by type
+            media_breakdown = {
+                'total': testimonial_data.total_media,
+                'images': testimonial_data.total_images,
+                'videos': testimonial_data.total_videos,
+                'audios': testimonial_data.total_audios,
+                'documents': testimonial_data.total_documents,
+                'has_primary': testimonial_data.has_primary_media > 0,
+            }
+            
+            # Content metrics
+            content_metrics = {
+                'content_length': len(testimonial.content) if testimonial.content else 0,
+                'has_title': bool(testimonial.title),
+                'has_company': bool(testimonial.company),
+                'has_location': bool(testimonial.location),
+                'has_avatar': bool(testimonial.avatar),
+                'has_website': bool(testimonial.website),
+                'has_social_media': bool(testimonial.social_media),
+                'has_response': bool(testimonial.response),
+            }
+            
+            # Engagement metrics
+            engagement_metrics = {
+                'is_verified': testimonial.is_verified,
+                'is_featured': testimonial.status == TestimonialStatus.FEATURED,
+                'has_been_responded_to': bool(testimonial.response),
+                'response_time_hours': None,
+            }
+            
+            if testimonial.response_at:
+                response_time = (testimonial.response_at - testimonial.created_at).total_seconds() / 3600
+                engagement_metrics['response_time_hours'] = round(response_time, 2)
+            
+            return Response({
+                # Basic info
+                'id': testimonial.id,
+                'status': testimonial.status,
+                'status_display': testimonial.get_status_display(),
+                'rating': testimonial.rating,
+                'is_anonymous': testimonial.is_anonymous,
+                'is_verified': testimonial.is_verified,
+                
+                # Time metrics
+                'created_at': testimonial.created_at,
+                'updated_at': testimonial.updated_at,
+                'approved_at': testimonial.approved_at,
+                'age_in_days': age_in_days,
+                'time_to_approval_hours': round(time_to_approval, 2) if time_to_approval else None,
+                
+                # Related data
+                'category': category_info,
+                'author': author_info,
+                
+                # Media statistics
+                'media': media_breakdown,
+                
+                # Content completeness
+                'content_metrics': content_metrics,
+                
+                # Engagement
+                'engagement': engagement_metrics,
+                
+                # Meta
+                'generated_at': timezone.now().isoformat(),
+            })
+        
+        if app_settings.USE_REDIS_CACHE:
+            cache_key = get_cache_key('testimonial_detail_stats', testimonial.pk)
+            return cache_get_or_set(cache_key, get_single_testimonial_stats,
+                                timeout=app_settings.CACHE_TIMEOUT)
+        
+        return get_single_testimonial_stats()
+    
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         """
@@ -594,6 +722,80 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'])
+    def verify(self, request, pk=None):
+        """
+        Mark a testimonial as verified. Admin/moderator only.
+        Verified testimonials show a verified badge and are considered more trustworthy.
+        """
+        if not self.is_moderator_or_admin(request.user):
+            return Response(
+                {"detail": _("You do not have permission to verify testimonials.")},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        testimonial = self.get_object()
+
+        if testimonial.is_verified:
+            return Response(
+                {"detail": _("Testimonial is already verified.")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Mark as verified
+        testimonial.is_verified = True
+        testimonial.save(update_fields=['is_verified'])
+
+        # Log the verification
+        log_testimonial_action(testimonial, "verify", request.user)
+
+        # Invalidate cache
+        invalidate_testimonial_cache(
+            testimonial_id=testimonial.pk,
+            category_id=testimonial.category_id,
+            user_id=testimonial.author_id
+        )
+
+        serializer = self.get_serializer(testimonial)
+        return Response(serializer.data)
+
+
+    @action(detail=True, methods=['post'])
+    def unverify(self, request, pk=None):
+        """
+        Remove verified status from a testimonial. Admin/moderator only.
+        """
+        if not self.is_moderator_or_admin(request.user):
+            return Response(
+                {"detail": _("You do not have permission to unverify testimonials.")},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        testimonial = self.get_object()
+
+        if not testimonial.is_verified:
+            return Response(
+                {"detail": _("Testimonial is not verified.")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Remove verified status
+        testimonial.is_verified = False
+        testimonial.save(update_fields=['is_verified'])
+
+        # Log the action
+        log_testimonial_action(testimonial, "unverify", request.user)
+
+        # Invalidate cache
+        invalidate_testimonial_cache(
+            testimonial_id=testimonial.pk,
+            category_id=testimonial.category_id,
+            user_id=testimonial.author_id
+        )
+
+        serializer = self.get_serializer(testimonial)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
     def add_media(self, request, pk=None):
         """
         Add media to a testimonial with background processing.
@@ -631,6 +833,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     def bulk_action(self, request):
         """
         Optimized bulk moderation with background processing.
+        FIXED: Added 'verify' and 'unverify' actions.
         """
         if not self.is_moderator_or_admin(request.user):
             return Response(
@@ -640,9 +843,13 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         
         action_type = request.data.get('action')
         
-        if action_type not in ['approve', 'reject', 'feature', 'archive']:
+        # FIXED: Added verify and unverify to allowed actions
+        allowed_actions = ['approve', 'reject', 'feature', 'archive', 'verify', 'unverify']
+        if action_type not in allowed_actions:
             return Response(
-                {"detail": _("Invalid action. Must be one of: approve, reject, feature, archive.")},
+                {"detail": _("Invalid action. Must be one of: %(actions)s.") % {
+                    'actions': ', '.join(allowed_actions)
+                }},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -695,6 +902,13 @@ class TestimonialViewSet(viewsets.ModelViewSet):
                 
             elif action_type == 'archive':
                 testimonial.status = TestimonialStatus.ARCHIVED
+            
+            # FIXED: Added verify and unverify actions
+            elif action_type == 'verify':
+                testimonial.is_verified = True
+                
+            elif action_type == 'unverify':
+                testimonial.is_verified = False
             
             testimonial.save()
             processed_count += 1
@@ -777,6 +991,79 @@ class TestimonialCategoryViewSet(viewsets.ModelViewSet):
             return cache_get_or_set(cache_key, get_category_testimonials)
         
         return get_category_testimonials()
+    
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """
+        Get statistics for all categories.
+        FIXED: Use queryset directly instead of manager method.
+        """
+        def get_category_stats():
+            
+            # FIXED: Call with_stats() on the queryset, not the manager
+            categories = TestimonialCategory.objects.get_queryset().with_stats()
+            
+            stats_data = []
+            for category in categories:
+                stats_data.append({
+                    'id': category.id,
+                    'name': category.name,
+                    'slug': category.slug,
+                    'total_testimonials': category.total_testimonials,
+                    'published_testimonials': category.published_testimonials,
+                    'pending_testimonials': category.pending_testimonials,
+                    'average_rating': round(category.average_rating or 0, 2),
+                    'latest_testimonial': category.latest_testimonial,
+                    'is_active': category.is_active,
+                })
+            
+            return Response({
+                'count': len(stats_data),
+                'results': stats_data
+            })
+        
+        if app_settings.USE_REDIS_CACHE:
+            cache_key = get_cache_key('category_stats_api')
+            return cache_get_or_set(cache_key, get_category_stats,
+                                timeout=app_settings.CACHE_TIMEOUT * 2)
+        
+        return get_category_stats()
+
+
+    @action(detail=True, methods=['get'])
+    def stats_detail(self, request, pk=None):
+        """
+        Get detailed statistics for a specific category.
+        FIXED: Use queryset directly.
+        """
+        category = self.get_object()
+        
+        def get_single_category_stats():
+            # FIXED: Call with_stats() on queryset
+            category_with_stats = TestimonialCategory.objects.get_queryset().with_stats().get(pk=category.pk)
+            
+            return Response({
+                'id': category_with_stats.id,
+                'name': category_with_stats.name,
+                'slug': category_with_stats.slug,
+                'description': category_with_stats.description,
+                'total_testimonials': category_with_stats.total_testimonials,
+                'published_testimonials': category_with_stats.published_testimonials,
+                'pending_testimonials': category_with_stats.pending_testimonials,
+                'average_rating': round(category_with_stats.average_rating or 0, 2),
+                'latest_testimonial': category_with_stats.latest_testimonial,
+                'is_active': category_with_stats.is_active,
+                'order': category_with_stats.order,
+                'created_at': category_with_stats.created_at,
+                'updated_at': category_with_stats.updated_at,
+            })
+        
+        if app_settings.USE_REDIS_CACHE:
+            cache_key = get_cache_key('category_detail_stats', category.pk)
+            return cache_get_or_set(cache_key, get_single_category_stats,
+                                timeout=app_settings.CACHE_TIMEOUT)
+        
+        return get_single_category_stats()
 
 
 class TestimonialMediaViewSet(viewsets.ModelViewSet):
@@ -931,6 +1218,155 @@ class TestimonialMediaViewSet(viewsets.ModelViewSet):
                                   timeout=app_settings.CACHE_TIMEOUT * 2)
         
         return get_media_stats()
+    
+    @action(detail=True, methods=['get'])
+    def stats_detail(self, request, pk=None):
+        """
+        Get detailed statistics for a specific media file.
+        Includes file info, related testimonial data, and metadata.
+        """
+        media = self.get_object()
+        
+        def get_single_media_stats():
+            
+            # Get file size and metadata
+            file_size_bytes = 0
+            file_info = {
+                'has_file': bool(media.file),
+                'file_name': None,
+                'file_extension': None,
+                'file_size_bytes': 0,
+                'file_size_mb': 0,
+                'file_url': None,
+            }
+            
+            if media.file:
+                try:
+                    file_size_bytes = media.file.size
+                    file_info.update({
+                        'has_file': True,
+                        'file_name': media.file.name.split('/')[-1],
+                        'file_extension': media.file.name.split('.')[-1].lower() if '.' in media.file.name else None,
+                        'file_size_bytes': file_size_bytes,
+                        'file_size_mb': round(file_size_bytes / (1024 * 1024), 2),
+                        'file_url': media.file.url,
+                    })
+                except Exception:
+                    pass
+            
+            # Get testimonial info
+            testimonial_info = {
+                'id': media.testimonial.id,
+                'author_name': media.testimonial.author_name,
+                'company': media.testimonial.company,
+                'rating': media.testimonial.rating,
+                'status': media.testimonial.status,
+                'status_display': media.testimonial.get_status_display(),
+                'total_media': media.testimonial.media.count(),
+            }
+            
+            # Check if this is primary media
+            is_primary = media.is_primary
+            
+            # Get sibling media count (other media for same testimonial)
+            sibling_media = TestimonialMedia.objects.filter(
+                testimonial=media.testimonial
+            ).exclude(pk=media.pk)
+            
+            sibling_stats = {
+                'total_siblings': sibling_media.count(),
+                'siblings_by_type': {
+                    'images': sibling_media.filter(media_type=TestimonialMediaType.IMAGE).count(),
+                    'videos': sibling_media.filter(media_type=TestimonialMediaType.VIDEO).count(),
+                    'audios': sibling_media.filter(media_type=TestimonialMediaType.AUDIO).count(),
+                    'documents': sibling_media.filter(media_type=TestimonialMediaType.DOCUMENT).count(),
+                },
+                'has_other_primary': sibling_media.filter(is_primary=True).exists(),
+            }
+            
+            # Calculate age
+            age_in_days = (timezone.now() - media.created_at).days
+            
+            # Content completeness
+            content_completeness = {
+                'has_title': bool(media.title),
+                'has_description': bool(media.description),
+                'has_extra_data': bool(media.extra_data),
+                'title_length': len(media.title) if media.title else 0,
+                'description_length': len(media.description) if media.description else 0,
+            }
+            
+            # Thumbnail info (if available in extra_data)
+            thumbnail_info = None
+            if media.extra_data and 'thumbnails' in media.extra_data:
+                thumbnail_info = {
+                    'has_thumbnails': True,
+                    'thumbnail_sizes': list(media.extra_data['thumbnails'].keys()),
+                    'thumbnail_count': len(media.extra_data['thumbnails']),
+                }
+            
+            # Processing status (if available in extra_data)
+            processing_info = {
+                'has_extra_data': bool(media.extra_data),
+                'extra_data_keys': list(media.extra_data.keys()) if media.extra_data else [],
+            }
+            
+            return Response({
+                # Basic info
+                'id': media.id,
+                'media_type': media.media_type,
+                'media_type_display': media.get_media_type_display(),
+                'is_primary': is_primary,
+                'order': media.order,
+                
+                # File information
+                'file': file_info,
+                
+                # Related testimonial
+                'testimonial': testimonial_info,
+                
+                # Sibling media
+                'siblings': sibling_stats,
+                
+                # Content
+                'title': media.title,
+                'description': media.description,
+                'content_completeness': content_completeness,
+                
+                # Metadata
+                'thumbnails': thumbnail_info,
+                'processing': processing_info,
+                
+                # Time metrics
+                'created_at': media.created_at,
+                'age_in_days': age_in_days,
+                
+                # Quality indicators
+                'quality_score': {
+                    'has_title': content_completeness['has_title'],
+                    'has_description': content_completeness['has_description'],
+                    'file_size_appropriate': file_size_bytes > 0 and file_size_bytes < 10 * 1024 * 1024,  # < 10MB
+                    'is_organized': is_primary or media.order > 0,
+                    'completeness_percentage': round(
+                        sum([
+                            content_completeness['has_title'],
+                            content_completeness['has_description'],
+                            bool(file_size_bytes),
+                            is_primary or media.order > 0,
+                        ]) / 4 * 100, 2
+                    ),
+                },
+                
+                # Meta
+                'generated_at': timezone.now().isoformat(),
+            })
+        
+        if app_settings.USE_REDIS_CACHE:
+            cache_key = get_cache_key('media_detail_stats', media.pk)
+            return cache_get_or_set(cache_key, get_single_media_stats,
+                                timeout=app_settings.CACHE_TIMEOUT)
+        
+        return get_single_media_stats()
 
 
 # === PERFORMANCE MONITORING MIDDLEWARE ===

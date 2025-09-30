@@ -69,10 +69,10 @@ class TestimonialAdmin(admin.ModelAdmin):
     Admin for testimonials.
     """
     form = TestimonialAdminForm
-    list_display = ('author_name', 'company', 'get_rating_stars', 'status_badge', 'category', 'created_at_formatted', 'has_media')
+    list_display = ('get_avatar_thumbnail','author_name', 'company', 'get_rating_stars', 'status_badge', 'category', 'created_at_formatted', 'has_media')
     list_filter = ('status', 'rating', 'category', 'created_at', 'is_anonymous', 'is_verified')
     search_fields = ('author_name', 'author_email', 'company', 'content')
-    readonly_fields = ('created_at', 'updated_at', 'approved_at', 'ip_address')
+    readonly_fields = ('created_at', 'updated_at', 'approved_at', 'ip_address', 'get_avatar_preview')
     actions = ['approve_testimonials', 'reject_testimonials', 'feature_testimonials', 'archive_testimonials']
     inlines = [TestimonialMediaInline]
     
@@ -210,6 +210,40 @@ class TestimonialAdmin(admin.ModelAdmin):
         
         messages.success(request, _('%(count)d testimonials were archived.') % {'count': updated})
     archive_testimonials.short_description = _('Archive selected testimonials')
+
+    def get_avatar_thumbnail(self, obj):
+        """Display a small avatar thumbnail in list view."""
+        if obj.avatar:
+            return format_html(
+                '<img src="{}" width="40" height="40" style="object-fit: cover; border-radius: 50%;" />',
+                obj.avatar.url
+            )
+        else:
+            # Show placeholder for missing avatar
+            return format_html(
+                '<div style="width: 40px; height: 40px; border-radius: 50%; '
+                'background-color: #e0e0e0; display: flex; align-items: center; '
+                'justify-content: center; font-size: 18px;">👤</div>'
+            )
+    get_avatar_thumbnail.short_description = _('Avatar')
+    
+    def get_avatar_preview(self, obj):
+        """Display a larger avatar preview in detail view."""
+        if obj.avatar:
+            return format_html(
+                '<div style="margin: 10px 0;">'
+                '<img src="{}" style="max-width: 200px; max-height: 200px; '
+                'border-radius: 8px; object-fit: cover;" />'
+                '</div>',
+                obj.avatar.url
+            )
+        else:
+            return format_html(
+                '<div style="width: 200px; height: 200px; border-radius: 8px; '
+                'background-color: #f5f5f5; display: flex; align-items: center; '
+                'justify-content: center; font-size: 72px; border: 2px dashed #ccc;">👤</div>'
+            )
+    get_avatar_preview.short_description = _('Avatar Preview')
     
     def save_model(self, request, obj, form, change):
         """Override save_model to handle special cases."""

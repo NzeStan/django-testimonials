@@ -246,7 +246,7 @@ def generate_upload_path(instance, filename):
 
 def get_file_type(file_obj):
     """
-    Determine the type of a file based on its extension with better categorization.
+    Determine the type of a file based on its extension with proper validation.
     
     Args:
         file_obj: File object or file path
@@ -268,21 +268,25 @@ def get_file_type(file_obj):
     if '.' not in filename:
         raise ValidationError(_("File must have an extension"))
     
-    ext = filename.split('.')[-1].lower()
+    # Get extension and normalize it
+    ext = filename.split('.')[-1].lower().strip()
     
-    # Use the allowed extensions from settings
+    # Get the allowed extensions from settings
     allowed_extensions = app_settings.ALLOWED_FILE_EXTENSIONS
     
-    # Check if extension is allowed first
-    if ext not in allowed_extensions:
+    # FIXED: Normalize allowed extensions to lowercase for comparison
+    allowed_extensions_lower = [e.lower().strip() for e in allowed_extensions]
+    
+    # FIXED: Check if extension is in the allowed list (case-insensitive)
+    if ext not in allowed_extensions_lower:
         raise ValidationError(
-            _("File type '%(ext)s' not allowed. Allowed types: %(types)s") % {
+            _("File type '.%(ext)s' is not allowed. Allowed types: %(types)s") % {
                 'ext': ext,
                 'types': ', '.join(allowed_extensions)
             }
         )
     
-    # Define file types by extension
+    # Define file types by extension (all lowercase)
     type_mapping = {
         TestimonialMediaType.IMAGE: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'],
         TestimonialMediaType.VIDEO: ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'mpeg', 'mpg'],
@@ -293,12 +297,13 @@ def get_file_type(file_obj):
     # Find matching type
     for media_type, extensions in type_mapping.items():
         if ext in extensions:
-            logger.debug(f"Detected media type '{media_type}' for file extension '{ext}'")
+            logger.debug(f"Detected media type '{media_type}' for file extension '.{ext}'")
             return media_type
     
-    # Default to document type for unknown but allowed extensions
-    logger.warning(f"Unknown file extension '{ext}' for testimonial media, defaulting to DOCUMENT type")
+    # If extension is allowed but not in type_mapping, default to document
+    logger.warning(f"File extension '.{ext}' is allowed but not mapped to a specific type, defaulting to DOCUMENT")
     return TestimonialMediaType.DOCUMENT
+
 
 # === THUMBNAIL UTILITIES ===
 

@@ -21,7 +21,6 @@ class TestimonialMediaSerializer(serializers.ModelSerializer):
             'id', 'file', 'testimonial', 'file_url', 'media_type', 'media_type_display', 
             'title', 'description', 'is_primary', 'order', 'created_at'
         ]
-        # FIXED: Remove media_type from read_only_fields to allow auto-detection
         read_only_fields = ['id', 'created_at', 'media_type_display', 'file_url']
     
     def get_media_type_display(self, obj) -> str:
@@ -34,12 +33,57 @@ class TestimonialMediaSerializer(serializers.ModelSerializer):
             return obj.file.url
         return None
     
+    # FIXED: Add file validation before create
+    def validate_file(self, file_obj):
+        """
+        Validate file extension against allowed extensions.
+        This runs BEFORE the model save, catching invalid files early.
+        """
+        
+        if not file_obj:
+            raise serializers.ValidationError(_("File is required."))
+        
+        # Get filename and extension
+        filename = file_obj.name
+        if '.' not in filename:
+            raise serializers.ValidationError(_("File must have an extension."))
+        
+        # Normalize extension to lowercase
+        ext = filename.split('.')[-1].lower().strip()
+        
+        # Get allowed extensions and normalize them
+        allowed_extensions = app_settings.ALLOWED_FILE_EXTENSIONS
+        allowed_extensions_lower = [e.lower().strip() for e in allowed_extensions]
+        
+        # CRITICAL: Check if extension is allowed
+        if ext not in allowed_extensions_lower:
+            raise serializers.ValidationError(
+                _("File type '.%(ext)s' is not allowed. Allowed types: %(types)s") % {
+                    'ext': ext,
+                    'types': ', '.join(allowed_extensions)
+                }
+            )
+        
+        # Validate file size
+        max_size = app_settings.MAX_FILE_SIZE
+        if file_obj.size > max_size:
+            max_size_mb = max_size / (1024 * 1024)
+            current_size_mb = file_obj.size / (1024 * 1024)
+            raise serializers.ValidationError(
+                _("File is too large (%(current).1f MB). Maximum size is %(max).1f MB.") % {
+                    'current': current_size_mb,
+                    'max': max_size_mb
+                }
+            )
+        
+        return file_obj
+    
     def create(self, validated_data):
         """
         Create media with auto-detected media type.
+        File validation already happened in validate_file().
         """
         # Let the model's save method handle media_type detection
-        # Don't set media_type here - let it be auto-detected from the file
         media = super().create(validated_data)
         return media
 

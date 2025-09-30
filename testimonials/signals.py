@@ -7,6 +7,10 @@ from .models import Testimonial, TestimonialMedia
 from .constants import TestimonialStatus
 from .conf import app_settings
 from .utils import invalidate_testimonial_cache, execute_task
+from .utils import get_cache_key
+from django.core.cache import cache
+from .tasks import process_media
+from .utils import log_testimonial_action
 
 # Set up logging
 logger = logging.getLogger("testimonials")
@@ -191,7 +195,6 @@ def testimonial_media_post_save(sender, instance, created, **kwargs):
         
         # Process media asynchronously (if Celery enabled)
         try:
-            from .tasks import process_media
             execute_task(process_media, str(instance.pk))
         except Exception as e:
             logger.error(f"Error queuing media processing: {e}")
@@ -224,8 +227,6 @@ def invalidate_cache_on_approval(sender, instance, **kwargs):
     
     # Specifically invalidate featured testimonials if this becomes featured
     if instance.status == TestimonialStatus.FEATURED:
-        from .utils import get_cache_key
-        from django.core.cache import cache
         try:
             cache.delete(get_cache_key('featured_testimonials'))
         except Exception as e:
@@ -235,8 +236,6 @@ def invalidate_cache_on_approval(sender, instance, **kwargs):
 @receiver(testimonial_featured)
 def invalidate_cache_on_feature(sender, instance, **kwargs):
     """Invalidate cache when a testimonial is featured."""
-    from .utils import get_cache_key
-    from django.core.cache import cache
     
     try:
         # Invalidate featured testimonials cache
@@ -258,9 +257,6 @@ def invalidate_cache_on_feature(sender, instance, **kwargs):
 def monitor_testimonial_creation_rate(sender, instance, **kwargs):
     """Monitor testimonial creation rate for performance insights."""
     try:
-        from django.core.cache import cache
-        from .utils import get_cache_key
-        
         # Increment daily counter
         today = timezone.now().date().isoformat()
         counter_key = get_cache_key('daily_testimonial_count', today)
@@ -327,7 +323,7 @@ def handle_bulk_approval(testimonial_ids, user=None):
     invalidate_testimonial_cache()
     
     # Log bulk action
-    from .utils import log_testimonial_action
+    
     log_testimonial_action(
         None,  # No specific testimonial
         "bulk_approve",
@@ -352,7 +348,6 @@ def handle_bulk_rejection(testimonial_ids, reason, user=None):
     invalidate_testimonial_cache()
     
     # Log bulk action
-    from .utils import log_testimonial_action
     log_testimonial_action(
         None,  # No specific testimonial
         "bulk_reject",
