@@ -21,17 +21,28 @@ class TestimonialMediaSerializer(serializers.ModelSerializer):
             'id', 'file', 'testimonial', 'file_url', 'media_type', 'media_type_display', 
             'title', 'description', 'is_primary', 'order', 'created_at'
         ]
-        read_only_fields = ['id', 'created_at', 'media_type_display', 'file_url', 'media_type']
+        # FIXED: Remove media_type from read_only_fields to allow auto-detection
+        read_only_fields = ['id', 'created_at', 'media_type_display', 'file_url']
     
-    def get_media_type_display(self, obj)-> str:
+    def get_media_type_display(self, obj) -> str:
         """Get the display value for media_type."""
         return obj.get_media_type_display()
     
-    def get_file_url(self, obj)-> str:
+    def get_file_url(self, obj) -> str:
         """Get the URL for the file."""
         if obj.file:
             return obj.file.url
         return None
+    
+    def create(self, validated_data):
+        """
+        Create media with auto-detected media type.
+        """
+        # Let the model's save method handle media_type detection
+        # Don't set media_type here - let it be auto-detected from the file
+        media = super().create(validated_data)
+        return media
+
 
 
 class TestimonialCategorySerializer(serializers.ModelSerializer):

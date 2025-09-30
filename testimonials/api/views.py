@@ -169,26 +169,32 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         """
-        Optimized create with background processing.
+        Create media with background processing.
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # Perform creation
-        testimonial = self.perform_create(serializer)
+        # FIXED: Save returns the media instance
+        media = serializer.save()
         
         # Background processing
         if app_settings.USE_CELERY:
             try:
-                # Send notifications asynchronously
-                from ..tasks import send_admin_notification
-                execute_task(send_admin_notification, str(testimonial.pk), 'new_testimonial')
+                from ..tasks import process_media
+                from ..utils import execute_task
+                execute_task(process_media, str(media.pk))
             except Exception as e:
-                # Log error but don't fail the request
-                log_testimonial_action(testimonial, "async_notification_failed", 
-                                     request.user, str(e))
+                from ..utils import log_testimonial_action
+                log_testimonial_action(media.testimonial, "media_processing_failed", 
+                                    request.user, str(e))
+        
+        # Invalidate cache
+        invalidate_testimonial_cache(testimonial_id=media.testimonial_id)
         
         headers = self.get_success_headers(serializer.data)
+        
+        # FIXED: Return the single created media, not a list
+        # The response should be a single object with 201 status
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
     def update(self, request, *args, **kwargs):

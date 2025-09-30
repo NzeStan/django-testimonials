@@ -5,12 +5,12 @@ from django.utils.html import format_html
 from django.urls import reverse
 from django.http import HttpResponseRedirect
 from django.contrib import messages
-from django.db.models import Count, Avg
+from django.db.models import Count
 from django.shortcuts import render
 from .models import Testimonial, TestimonialCategory, TestimonialMedia
 from .forms import TestimonialAdminForm, TestimonialCategoryForm, TestimonialMediaForm
 from .constants import TestimonialStatus
-
+from .constants import TestimonialMediaType
 
 class TestimonialMediaInline(admin.TabularInline):
     """
@@ -266,15 +266,25 @@ class TestimonialMediaAdmin(admin.ModelAdmin):
     )
     
     def get_thumbnail(self, obj):
-        """Display a thumbnail for the media."""
-        if obj.media_type == 'image':
-            return format_html('<img src="{}" width="50" height="50" style="object-fit: cover;" />', obj.file.url)
-        elif obj.media_type == 'video':
-            return format_html('<span class="video-thumbnail">🎬</span>')
-        elif obj.media_type == 'audio':
-            return format_html('<span class="audio-thumbnail">🔊</span>')
+        """Display a thumbnail preview for the media."""
+        if not obj.file:
+            return '-'
+        
+        
+        if obj.media_type == TestimonialMediaType.IMAGE:
+            return format_html(
+                '<img src="{}" width="50" height="50" style="object-fit: cover; border-radius: 4px;" />', 
+                obj.file.url
+            )
+        elif obj.media_type == TestimonialMediaType.VIDEO:
+            return format_html('<span class="video-thumbnail" style="font-size: 30px;">🎬</span>')
+        elif obj.media_type == TestimonialMediaType.AUDIO:
+            return format_html('<span class="audio-thumbnail" style="font-size: 30px;">🔊</span>')
+        elif obj.media_type == TestimonialMediaType.DOCUMENT:
+            return format_html('<span class="document-thumbnail" style="font-size: 30px;">📄</span>')
         else:
-            return format_html('<span class="document-thumbnail">📄</span>')
+            return format_html('<span style="font-size: 30px;">📎</span>')
+
     get_thumbnail.short_description = _('Thumbnail')
     
     def get_preview(self, obj):

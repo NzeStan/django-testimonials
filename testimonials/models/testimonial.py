@@ -683,9 +683,21 @@ class TestimonialMedia(BaseModel):
             self.media_type = get_file_type(self.file)
     
     def save(self, *args, **kwargs):
-        # Auto-detect media type if not specified
-        if self.file and not self.media_type:
-            self.media_type = get_file_type(self.file)
+        """Save with auto-detection of media type."""
+        
+        # Auto-detect media type if not specified or if it's still the default
+        if self.file:
+            # Always detect from file, even if media_type was set
+            # This ensures correct type regardless of what was passed
+            try:
+                detected_type = get_file_type(self.file)
+                self.media_type = detected_type
+            except Exception as e:
+                # If detection fails, log it but keep existing value
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to detect media type for {self.file.name}: {e}")
+                # Keep the default or existing media_type
 
         # Optimize text field processing
         if self.title is not None:

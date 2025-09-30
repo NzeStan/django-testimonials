@@ -9,6 +9,10 @@ from django.utils.translation import gettext_lazy as _
 from django.core.cache import cache
 from django.core.files.base import ContentFile
 from .conf import app_settings
+from .constants import TestimonialMediaType
+import logging
+    
+logger = logging.getLogger(__name__)
 
 
 # Set up logging
@@ -246,9 +250,19 @@ def generate_upload_path(instance, filename):
 def get_file_type(file_obj):
     """
     Determine the type of a file based on its extension with better categorization.
+    
+    Args:
+        file_obj: File object or file path
+        
+    Returns:
+        str: Media type constant from TestimonialMediaType
+        
+    Raises:
+        ValidationError: If file type is not allowed
     """
-    from .constants import TestimonialMediaType
+    
 
+    # Get filename
     if hasattr(file_obj, "name"):
         filename = file_obj.name
     else:
@@ -272,22 +286,23 @@ def get_file_type(file_obj):
             }
         )
     
-    # Define file types by extension (move this to constants/settings for better maintainability)
+    # Define file types by extension
     type_mapping = {
-        TestimonialMediaType.IMAGE: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'],
-        TestimonialMediaType.VIDEO: ['mp4', 'webm', 'mov', 'avi', 'mkv'],
-        TestimonialMediaType.AUDIO: ['mp3', 'wav', 'ogg', 'aac', 'flac'],
-        TestimonialMediaType.DOCUMENT: ['pdf', 'doc', 'docx', 'txt', 'rtf'],
+        TestimonialMediaType.IMAGE: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'],
+        TestimonialMediaType.VIDEO: ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'mpeg', 'mpg'],
+        TestimonialMediaType.AUDIO: ['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a', 'wma'],
+        TestimonialMediaType.DOCUMENT: ['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'xls', 'xlsx', 'ppt', 'pptx'],
     }
     
+    # Find matching type
     for media_type, extensions in type_mapping.items():
         if ext in extensions:
+            logger.debug(f"Detected media type '{media_type}' for file extension '{ext}'")
             return media_type
     
     # Default to document type for unknown but allowed extensions
-    logger.warning(f"Unknown file extension for testimonial media: {ext}")
+    logger.warning(f"Unknown file extension '{ext}' for testimonial media, defaulting to DOCUMENT type")
     return TestimonialMediaType.DOCUMENT
-
 
 # === THUMBNAIL UTILITIES ===
 
