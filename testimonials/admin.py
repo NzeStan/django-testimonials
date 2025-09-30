@@ -2,7 +2,6 @@ from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from django.utils.html import format_html
-from django.urls import reverse
 from django.http import HttpResponseRedirect
 from django.contrib import messages
 from django.db.models import Count
@@ -11,6 +10,7 @@ from .models import Testimonial, TestimonialCategory, TestimonialMedia
 from .forms import TestimonialAdminForm, TestimonialCategoryForm, TestimonialMediaForm
 from .constants import TestimonialStatus
 from .constants import TestimonialMediaType
+
 
 class TestimonialMediaInline(admin.TabularInline):
     """
@@ -270,7 +270,7 @@ class TestimonialMediaAdmin(admin.ModelAdmin):
         if not obj.file:
             return '-'
         
-        
+        # FIXED: Use the actual media_type value, not string comparison
         if obj.media_type == TestimonialMediaType.IMAGE:
             return format_html(
                 '<img src="{}" width="50" height="50" style="object-fit: cover; border-radius: 4px;" />', 

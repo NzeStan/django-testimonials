@@ -11,12 +11,9 @@ from django.core.files.base import ContentFile
 from .conf import app_settings
 from .constants import TestimonialMediaType
 import logging
-    
-logger = logging.getLogger(__name__)
-
-
 # Set up logging
 logger = logging.getLogger("testimonials")
+
 
 # === CACHE UTILITIES ===
 
@@ -260,7 +257,6 @@ def get_file_type(file_obj):
     Raises:
         ValidationError: If file type is not allowed
     """
-    
 
     # Get filename
     if hasattr(file_obj, "name"):

@@ -169,32 +169,27 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         """
-        Create media with background processing.
+        Create testimonial with background processing.
+        FIXED: Was incorrectly using 'media' instead of 'testimonial'
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # FIXED: Save returns the media instance
-        media = serializer.save()
+        # Perform creation - returns testimonial instance
+        testimonial = self.perform_create(serializer)
         
         # Background processing
         if app_settings.USE_CELERY:
             try:
-                from ..tasks import process_media
-                from ..utils import execute_task
-                execute_task(process_media, str(media.pk))
+                # Send notifications asynchronously
+                from ..tasks import send_admin_notification
+                execute_task(send_admin_notification, str(testimonial.pk), 'new_testimonial')
             except Exception as e:
-                from ..utils import log_testimonial_action
-                log_testimonial_action(media.testimonial, "media_processing_failed", 
+                # Log error but don't fail the request
+                log_testimonial_action(testimonial, "async_notification_failed", 
                                     request.user, str(e))
         
-        # Invalidate cache
-        invalidate_testimonial_cache(testimonial_id=media.testimonial_id)
-        
         headers = self.get_success_headers(serializer.data)
-        
-        # FIXED: Return the single created media, not a list
-        # The response should be a single object with 201 status
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
     def update(self, request, *args, **kwargs):
@@ -791,6 +786,8 @@ class TestimonialMediaViewSet(viewsets.ModelViewSet):
     queryset = TestimonialMedia.objects.all()
     serializer_class = TestimonialMediaSerializer
     permission_classes = [IsTestimonialAuthorOrReadOnly]
+    # FIXED: Add pagination to media viewset
+    pagination_class = OptimizedPagination
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['testimonial', 'media_type', 'is_primary']
     ordering_fields = ['order', 'created_at']
@@ -835,6 +832,7 @@ class TestimonialMediaViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
+        # FIXED: Save returns the media instance, not testimonial
         media = serializer.save()
         
         # Background processing
@@ -859,9 +857,7 @@ class TestimonialMediaViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         testimonial_id = instance.testimonial_id
         
-        # Log deletion
-        log_testimonial_action(instance.testimonial, "media_delete", request.user)
-        
+        # Perform deletion
         self.perform_destroy(instance)
         
         # Invalidate cache
