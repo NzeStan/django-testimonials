@@ -155,29 +155,20 @@ def execute_task(task_func, *args, **kwargs):
     Execute a task either asynchronously (if Celery enabled) or synchronously.
     
     Args:
-        task_func: Task function to execute
+        task_func: Task function to execute (wrapper function)
         *args: Task arguments
         **kwargs: Task keyword arguments
     
     Returns:
         Task result or None for async execution
     """
-    celery_app = get_celery_app()
-    
-    if celery_app and hasattr(task_func, 'delay'):
-        try:
-            # Execute asynchronously
-            return task_func.delay(*args, **kwargs)
-        except Exception as e:
-            logger.warning(f"Async task execution failed: {e}, falling back to sync")
-    
-    # Execute synchronously
+    # Simply call the wrapper function with the provided arguments
+    # The wrapper function handles whether to use Celery or sync execution
     try:
         return task_func(*args, **kwargs)
     except Exception as e:
         logger.error(f"Task execution failed: {e}")
         return None
-
 
 # === SLUG UTILITIES ===
 

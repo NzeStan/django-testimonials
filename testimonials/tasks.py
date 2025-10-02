@@ -468,48 +468,132 @@ PERIODIC_TASKS = {
 
 
 # === TASK WRAPPER FUNCTIONS ===
+# These wrapper functions handle both async (Celery) and sync execution
 
 def send_testimonial_email(testimonial_id: str, email_type: str, 
                           recipient_email: str, context_data: Dict[str, Any] = None):
     """
     Wrapper function to send testimonial emails (async if Celery enabled, sync otherwise).
+    
+    Args:
+        testimonial_id: ID of the testimonial
+        email_type: Type of email (approved, rejected, response)
+        recipient_email: Recipient email address
+        context_data: Optional context data for email template
     """
     if app_settings.USE_CELERY and CELERY_AVAILABLE:
+        # Async execution via Celery
         return send_testimonial_notification_email.delay(
             testimonial_id, email_type, recipient_email, context_data
         )
     else:
-        return send_testimonial_notification_email(
-            None, testimonial_id, email_type, recipient_email, context_data
-        )
+        # Synchronous execution - call the actual task function directly
+        # When bind=True, we need to pass a mock self object
+        class MockRequest:
+            retries = 0
+        
+        class MockSelf:
+            request = MockRequest()
+            max_retries = 3
+            
+            def retry(self, exc=None, countdown=None):
+                # For sync execution, we don't actually retry
+                raise exc
+        
+        try:
+            return send_testimonial_notification_email(
+                MockSelf(), 
+                testimonial_id, 
+                email_type, 
+                recipient_email, 
+                context_data
+            )
+        except Exception as e:
+            logger.error(f"Error sending testimonial email: {e}")
+            return None
 
 
 def send_admin_notification(testimonial_id: str, notification_type: str):
     """
     Wrapper function to send admin notifications.
+    
+    Args:
+        testimonial_id: ID of the testimonial
+        notification_type: Type of notification (new_testimonial, etc.)
     """
     if app_settings.USE_CELERY and CELERY_AVAILABLE:
         return send_admin_notification_email.delay(testimonial_id, notification_type)
     else:
-        return send_admin_notification_email(None, testimonial_id, notification_type)
+        class MockRequest:
+            retries = 0
+        
+        class MockSelf:
+            request = MockRequest()
+            max_retries = 3
+            
+            def retry(self, exc=None, countdown=None):
+                raise exc
+        
+        try:
+            return send_admin_notification_email(MockSelf(), testimonial_id, notification_type)
+        except Exception as e:
+            logger.error(f"Error sending admin notification: {e}")
+            return None
 
 
 def process_media(media_id: str):
     """
     Wrapper function to process media files.
+    
+    Args:
+        media_id: ID of the media file
     """
     if app_settings.USE_CELERY and CELERY_AVAILABLE:
         return process_testimonial_media.delay(media_id)
     else:
-        return process_testimonial_media(None, media_id)
+        class MockRequest:
+            retries = 0
+        
+        class MockSelf:
+            request = MockRequest()
+            max_retries = 3
+            
+            def retry(self, exc=None, countdown=None):
+                raise exc
+        
+        try:
+            return process_testimonial_media(MockSelf(), media_id)
+        except Exception as e:
+            logger.error(f"Error processing media: {e}")
+            return None
 
 
 def bulk_moderate(testimonial_ids: list, action: str, user_id: int = None, 
                  extra_data: Dict[str, Any] = None):
     """
     Wrapper function for bulk moderation.
+    
+    Args:
+        testimonial_ids: List of testimonial IDs
+        action: Moderation action to perform
+        user_id: ID of user performing action
+        extra_data: Additional data for the action
     """
     if app_settings.USE_CELERY and CELERY_AVAILABLE:
         return bulk_moderate_testimonials.delay(testimonial_ids, action, user_id, extra_data)
     else:
-        return bulk_moderate_testimonials(None, testimonial_ids, action, user_id, extra_data)
+        class MockRequest:
+            retries = 0
+        
+        class MockSelf:
+            request = MockRequest()
+            max_retries = 2  # bulk_moderate_testimonials has max_retries=2
+            
+            def retry(self, exc=None, countdown=None):
+                raise exc
+        
+        try:
+            return bulk_moderate_testimonials(MockSelf(), testimonial_ids, action, user_id, extra_data)
+        except Exception as e:
+            logger.error(f"Error in bulk moderation: {e}")
+            return None
