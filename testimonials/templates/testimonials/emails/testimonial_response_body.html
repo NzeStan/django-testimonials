@@ -1,0 +1,101 @@
+{% load i18n %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% trans "Response to Your Testimonial" %}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Arial', 'Helvetica', sans-serif; background-color: #f4f4f4;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td align="center" style="padding: 40px 0;">
+                <table role="presentation" style="width: 600px; border-collapse: collapse; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); padding: 40px 30px; text-align: center;">
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: bold;">
+                                💬 {% trans "We've Responded to Your Testimonial" %}
+                            </h1>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <p style="margin: 0 0 20px; font-size: 16px; line-height: 1.6; color: #333333;">
+                                {% trans "Dear" %} <strong>{{ testimonial.author_name }}</strong>,
+                            </p>
+                            
+                            <p style="margin: 0 0 25px; font-size: 16px; line-height: 1.6; color: #333333;">
+                                {% blocktrans with site_name=site_name %}
+                                Thank you for your testimonial on {{ site_name }}. 
+                                We've added a response to your feedback that we'd like to share with you.
+                                {% endblocktrans %}
+                            </p>
+                            
+                            <!-- Your Testimonial Box -->
+                            <div style="background-color: #f8f9fa; border-left: 4px solid #4facfe; padding: 20px; margin: 25px 0; border-radius: 4px;">
+                                <p style="margin: 0 0 15px; font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px;">
+                                    {% trans "Your Testimonial" %}
+                                </p>
+                                
+                                <!-- Rating Stars -->
+                                <div style="margin-bottom: 15px;">
+                                    {% for i in "12345"|make_list %}
+                                        {% if forloop.counter <= testimonial.rating %}
+                                            <span style="color: #ffc107; font-size: 20px;">★</span>
+                                        {% else %}
+                                            <span style="color: #e0e0e0; font-size: 20px;">☆</span>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                                
+                                <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #333; font-style: italic;">
+                                    "{{ testimonial.content|truncatechars:300 }}"
+                                </p>
+                            </div>
+                            
+                            <!-- Our Response Box -->
+                            <div style="background-color: #e3f2fd; border-left: 4px solid #2196f3; padding: 20px; margin: 25px 0; border-radius: 4px;">
+                                <p style="margin: 0 0 15px; font-size: 14px; color: #1565c0; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">
+                                    {% trans "Our Response" %}
+                                </p>
+                                <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #1565c0;">
+                                    {{ response }}
+                                </p>
+                            </div>
+                            
+                            {% if site_url %}
+                            <div style="text-align: center; margin: 30px 0;">
+                                <a href="{{ site_url }}" style="display: inline-block; padding: 14px 35px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px;">
+                                    {% trans "View Complete Conversation" %}
+                                </a>
+                            </div>
+                            {% endif %}
+                            
+                            <p style="margin: 25px 0 0; font-size: 16px; line-height: 1.6; color: #333333;">
+                                {% trans "We appreciate your feedback and thank you for being a valued customer. Feel free to reach out if you have any further questions!" %}
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8f9fa; padding: 30px; text-align: center; border-top: 1px solid #e0e0e0;">
+                            <p style="margin: 0 0 10px; font-size: 14px; color: #666;">
+                                {% trans "Best regards," %}<br>
+                                <strong>{{ site_name }}</strong>
+                            </p>
+                            
+                            <p style="margin: 15px 0 0; font-size: 12px; color: #999;">
+                                {% trans "This is an automated message. Please do not reply to this email." %}
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

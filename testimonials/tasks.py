@@ -1,3 +1,5 @@
+# testimonials/tasks.py (Updated with Email Notification Settings)
+
 """
 Celery tasks for the testimonials app.
 These tasks handle background processing for emails, media, and other heavy operations.
@@ -5,7 +7,7 @@ These tasks handle background processing for emails, media, and other heavy oper
 
 import logging
 from typing import Dict, Any
-from django.core.mail import send_mail
+from django.core.mail import send_mail, EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.conf import settings
 from django.utils import timezone
@@ -22,8 +24,13 @@ try:
 except ImportError:
     CELERY_AVAILABLE = False
     # Define a dummy decorator for when Celery is not available
-    def shared_task(func):
-        return func
+    def shared_task(*args, **kwargs):
+        def decorator(func):
+            return func
+        # Handle both @shared_task and @shared_task() syntax
+        if len(args) == 1 and callable(args[0]):
+            return args[0]
+        return decorator
 
 
 # === EMAIL TASKS ===
@@ -40,6 +47,11 @@ def send_testimonial_notification_email(self, testimonial_id: str, email_type: s
         recipient_email: Email address to send to
         context_data: Additional context for email template
     """
+    # Check if email notifications are enabled
+    if not app_settings.SEND_EMAIL_NOTIFICATIONS:
+        logger.info(f"Email notifications disabled. Skipping {email_type} email for testimonial {testimonial_id}")
+        return
+    
     try:
         from .models import Testimonial
         
@@ -57,22 +69,28 @@ def send_testimonial_notification_email(self, testimonial_id: str, email_type: s
             context.update(context_data)
         
         # Email templates mapping
+        template_extension = '.html' if app_settings.USE_HTML_EMAILS else '.txt'
+        
         templates = {
             'approved': {
                 'subject': 'testimonials/emails/testimonial_approved_subject.txt',
-                'body': 'testimonials/emails/testimonial_approved_body.txt',
+                'body_text': 'testimonials/emails/testimonial_approved_body.txt',
+                'body_html': 'testimonials/emails/testimonial_approved_body.html',
             },
             'rejected': {
                 'subject': 'testimonials/emails/testimonial_rejected_subject.txt',
-                'body': 'testimonials/emails/testimonial_rejected_body.txt',
+                'body_text': 'testimonials/emails/testimonial_rejected_body.txt',
+                'body_html': 'testimonials/emails/testimonial_rejected_body.html',
             },
             'response': {
                 'subject': 'testimonials/emails/testimonial_response_subject.txt',
-                'body': 'testimonials/emails/testimonial_response_body.txt',
+                'body_text': 'testimonials/emails/testimonial_response_body.txt',
+                'body_html': 'testimonials/emails/testimonial_response_body.html',
             },
             'new': {
                 'subject': 'testimonials/emails/new_testimonial_subject.txt',
-                'body': 'testimonials/emails/new_testimonial_body.txt',
+                'body_text': 'testimonials/emails/new_testimonial_body.txt',
+                'body_html': 'testimonials/emails/new_testimonial_body.html',
             }
         }
         
@@ -83,16 +101,47 @@ def send_testimonial_notification_email(self, testimonial_id: str, email_type: s
         
         # Render email content
         subject = render_to_string(template_config['subject'], context).strip()
-        message = render_to_string(template_config['body'], context)
+        text_message = render_to_string(template_config['body_text'], context)
         
-        # Send email
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com'),
-            recipient_list=[recipient_email],
-            fail_silently=False,
-        )
+        # Determine from email
+        from_name = app_settings.EMAIL_FROM_NAME
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com')
+        from_address = f"{from_name} <{from_email}>"
+        
+        # Send HTML email if enabled
+        if app_settings.USE_HTML_EMAILS:
+            try:
+                html_message = render_to_string(template_config['body_html'], context)
+                
+                # Create email with both text and HTML versions
+                email = EmailMultiAlternatives(
+                    subject=subject,
+                    body=text_message,
+                    from_email=from_address,
+                    to=[recipient_email]
+                )
+                email.attach_alternative(html_message, "text/html")
+                email.send(fail_silently=False)
+                
+            except Exception as html_error:
+                logger.warning(f"Failed to send HTML email, falling back to text: {html_error}")
+                # Fallback to text-only email
+                send_mail(
+                    subject=subject,
+                    message=text_message,
+                    from_email=from_address,
+                    recipient_list=[recipient_email],
+                    fail_silently=False,
+                )
+        else:
+            # Send text-only email
+            send_mail(
+                subject=subject,
+                message=text_message,
+                from_email=from_address,
+                recipient_list=[recipient_email],
+                fail_silently=False,
+            )
         
         log_testimonial_action(
             testimonial, 
@@ -125,54 +174,74 @@ def send_admin_notification_email(self, testimonial_id: str, notification_type: 
         testimonial_id: ID of the testimonial
         notification_type: Type of notification (new_testimonial, urgent_review, etc.)
     """
+    # Check if admin notifications are enabled
+    if not app_settings.SEND_ADMIN_NOTIFICATIONS:
+        logger.info(f"Admin notifications disabled. Skipping {notification_type} notification for testimonial {testimonial_id}")
+        return
+    
     try:
         from .models import Testimonial
         
-        if not app_settings.NOTIFICATION_EMAIL:
-            logger.info("Admin notifications disabled - no notification email configured")
+        # Check if admin email is configured
+        admin_email = app_settings.NOTIFICATION_EMAIL
+        if not admin_email:
+            logger.warning(f"No admin notification email configured. Skipping {notification_type} notification.")
             return
         
         testimonial = Testimonial.objects.select_related('category', 'author').get(id=testimonial_id)
         
+        # Context for email template
         context = {
             'testimonial': testimonial,
             'site_name': getattr(settings, 'SITE_NAME', 'Django Testimonials'),
             'site_url': getattr(settings, 'SITE_URL', ''),
-            'admin_url': f"{getattr(settings, 'SITE_URL', '')}/admin/testimonials/testimonial/{testimonial_id}/change/"
+            'notification_type': notification_type,
         }
         
-        if notification_type == 'new_testimonial':
-            subject = f"New testimonial received - {context['site_name']}"
-            message = f"""
-A new testimonial has been submitted and requires your attention:
-
-Author: {testimonial.author_name}
-Company: {testimonial.company or 'Not specified'}
-Rating: {testimonial.rating}/5
-Content: {testimonial.content[:200]}{'...' if len(testimonial.content) > 200 else ''}
-
-Status: {testimonial.get_status_display()}
-Category: {testimonial.category.name if testimonial.category else 'Uncategorized'}
-
-Review it here: {context['admin_url']}
-
-Best regards,
-{context['site_name']} System
-            """
+        # Email templates
+        template_extension = '.html' if app_settings.USE_HTML_EMAILS else '.txt'
+        
+        subject = render_to_string('testimonials/emails/new_testimonial_subject.txt', context).strip()
+        text_message = render_to_string('testimonials/emails/new_testimonial_body.txt', context)
+        
+        # Determine from email
+        from_name = app_settings.EMAIL_FROM_NAME
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com')
+        from_address = f"{from_name} <{from_email}>"
+        
+        # Send HTML email if enabled
+        if app_settings.USE_HTML_EMAILS:
+            try:
+                html_message = render_to_string('testimonials/emails/new_testimonial_body.html', context)
+                
+                email = EmailMultiAlternatives(
+                    subject=subject,
+                    body=text_message,
+                    from_email=from_address,
+                    to=[admin_email]
+                )
+                email.attach_alternative(html_message, "text/html")
+                email.send(fail_silently=False)
+                
+            except Exception as html_error:
+                logger.warning(f"Failed to send HTML admin notification, falling back to text: {html_error}")
+                send_mail(
+                    subject=subject,
+                    message=text_message,
+                    from_email=from_address,
+                    recipient_list=[admin_email],
+                    fail_silently=False,
+                )
         else:
-            logger.warning(f"Unknown admin notification type: {notification_type}")
-            return
+            send_mail(
+                subject=subject,
+                message=text_message,
+                from_email=from_address,
+                recipient_list=[admin_email],
+                fail_silently=False,
+            )
         
-        # Send to admin email
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com'),
-            recipient_list=[app_settings.NOTIFICATION_EMAIL],
-            fail_silently=False,
-        )
-        
-        logger.info(f"Successfully sent admin notification for testimonial {testimonial_id}")
+        logger.info(f"Successfully sent {notification_type} admin notification for testimonial {testimonial_id}")
         
     except Exception as exc:
         logger.error(f"Failed to send admin notification for testimonial {testimonial_id}: {exc}")
@@ -186,67 +255,22 @@ Best regards,
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def process_testimonial_media(self, media_id: str):
     """
-    Process uploaded testimonial media (thumbnails, validation, etc.).
+    Process uploaded testimonial media (generate thumbnails, optimize, etc.).
     
     Args:
-        media_id: ID of the testimonial media
+        media_id: ID of the media file
     """
     try:
         from .models import TestimonialMedia
-        from .constants import TestimonialMediaType
         
-        media = TestimonialMedia.objects.select_related('testimonial').get(id=media_id)
+        media = TestimonialMedia.objects.get(id=media_id)
         
-        # Process based on media type
-        if media.media_type == TestimonialMediaType.IMAGE:
-            # Generate thumbnails
-            thumbnails = generate_thumbnails(media.file)
-            
-            if thumbnails:
-                # Store thumbnail information in extra_data
-                if not hasattr(media, 'extra_data') or not media.extra_data:
-                    media.extra_data = {}
-                
-                media.extra_data['thumbnails'] = {}
-                
-                for size_name, thumbnail_file in thumbnails.items():
-                    # Save thumbnail file
-                    thumbnail_path = f"thumbnails/{size_name}_{media.file.name}"
-                    
-                    # Store thumbnail info
-                    media.extra_data['thumbnails'][size_name] = {
-                        'path': thumbnail_path,
-                        'generated_at': timezone.now().isoformat()
-                    }
-                
-                media.save(update_fields=['extra_data'])
-                
-                logger.info(f"Generated {len(thumbnails)} thumbnails for media {media_id}")
+        # Generate thumbnails for images
+        if media.media_type == 'image':
+            generate_thumbnails(media)
+            logger.info(f"Generated thumbnails for media {media_id}")
         
-        elif media.media_type == TestimonialMediaType.VIDEO:
-            # Video processing (basic validation for now)
-            # In a full implementation, you might extract video metadata,
-            # generate preview frames, etc.
-            logger.info(f"Video media {media_id} processed (validation only)")
-        
-        elif media.media_type == TestimonialMediaType.AUDIO:
-            # Audio processing (basic validation for now)
-            logger.info(f"Audio media {media_id} processed (validation only)")
-        
-        # Log the processing
-        log_testimonial_action(
-            media.testimonial,
-            "media_processed",
-            extra_data={
-                'media_id': str(media_id),
-                'media_type': media.media_type
-            }
-        )
-        
-        # Invalidate related cache
-        invalidate_testimonial_cache(
-            testimonial_id=media.testimonial_id
-        )
+        # Add more media processing logic here (video transcoding, etc.)
         
     except Exception as exc:
         logger.error(f"Failed to process media {media_id}: {exc}")
@@ -255,14 +279,19 @@ def process_testimonial_media(self, media_id: str):
             raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
 
 
-# === BULK OPERATION TASKS ===
+# === BULK OPERATIONS TASKS ===
 
-@shared_task(bind=True, max_retries=2)
-def bulk_moderate_testimonials(self, testimonial_ids: list, action: str, 
-                              user_id: int = None, extra_data: Dict[str, Any] = None):
+@shared_task(bind=True, max_retries=2, default_retry_delay=120)
+def bulk_moderate_testimonials(self, testimonial_ids: list, action: str, user_id: int = None, 
+                              extra_data: Dict[str, Any] = None):
     """
     Perform bulk moderation actions on testimonials.
-    FIXED: Added verify and unverify actions.
+    
+    Args:
+        testimonial_ids: List of testimonial IDs
+        action: Action to perform (approve, reject, feature, archive)
+        user_id: ID of user performing the action
+        extra_data: Additional data (e.g., rejection_reason)
     """
     try:
         from .models import Testimonial
@@ -272,73 +301,87 @@ def bulk_moderate_testimonials(self, testimonial_ids: list, action: str,
         User = get_user_model()
         user = User.objects.get(id=user_id) if user_id else None
         
-        # Process in batches for better performance
-        batch_size = app_settings.BULK_OPERATION_BATCH_SIZE
-        processed_count = 0
+        testimonials = Testimonial.objects.filter(id__in=testimonial_ids)
+        updated_count = 0
         
-        for i in range(0, len(testimonial_ids), batch_size):
-            batch_ids = testimonial_ids[i:i + batch_size]
-            testimonials = Testimonial.objects.filter(id__in=batch_ids)
-            
-            for testimonial in testimonials:
-                if action == 'approve':
+        for testimonial in testimonials:
+            if action == 'approve':
+                if testimonial.status != TestimonialStatus.APPROVED:
                     testimonial.status = TestimonialStatus.APPROVED
-                    testimonial.approved_at = timezone.now()
-                    testimonial.approved_by = user
+                    testimonial.save()
+                    updated_count += 1
                     
-                elif action == 'reject':
+                    # Send approval email if enabled
+                    if app_settings.SEND_EMAIL_NOTIFICATIONS and testimonial.author_email:
+                        send_testimonial_notification_email.delay(
+                            str(testimonial.id),
+                            'approved',
+                            testimonial.author_email
+                        )
+            
+            elif action == 'reject':
+                if testimonial.status != TestimonialStatus.REJECTED:
                     testimonial.status = TestimonialStatus.REJECTED
                     if extra_data and 'rejection_reason' in extra_data:
                         testimonial.rejection_reason = extra_data['rejection_reason']
+                    testimonial.save()
+                    updated_count += 1
                     
-                elif action == 'feature':
+                    # Send rejection email if enabled
+                    if app_settings.SEND_EMAIL_NOTIFICATIONS and testimonial.author_email:
+                        send_testimonial_notification_email.delay(
+                            str(testimonial.id),
+                            'rejected',
+                            testimonial.author_email
+                        )
+            
+            elif action == 'feature':
+                if testimonial.status != TestimonialStatus.FEATURED:
                     testimonial.status = TestimonialStatus.FEATURED
-                    
-                elif action == 'archive':
+                    testimonial.save()
+                    updated_count += 1
+            
+            elif action == 'archive':
+                if testimonial.status != TestimonialStatus.ARCHIVED:
                     testimonial.status = TestimonialStatus.ARCHIVED
-                
-                # FIXED: Added verify and unverify
-                elif action == 'verify':
-                    testimonial.is_verified = True
-                    
-                elif action == 'unverify':
-                    testimonial.is_verified = False
-                
-                testimonial.save()
-                processed_count += 1
-                
-                # Log individual action
-                log_testimonial_action(testimonial, f"bulk_{action}", user)
+                    testimonial.save()
+                    updated_count += 1
+            
+            # Log the action
+            log_testimonial_action(
+                testimonial,
+                f"bulk_{action}",
+                user=user,
+                extra_data=extra_data
+            )
         
-        # Invalidate cache after bulk operation
+        # Invalidate caches
         invalidate_testimonial_cache()
         
-        logger.info(f"Bulk {action} completed: {processed_count} testimonials processed")
-        return processed_count
+        logger.info(f"Bulk {action} completed: {updated_count}/{len(testimonial_ids)} testimonials updated")
+        return updated_count
         
     except Exception as exc:
-        logger.error(f"Bulk moderation failed for action {action}: {exc}")
+        logger.error(f"Bulk moderation failed: {exc}")
+        
         if self.request.retries < self.max_retries:
-            raise self.retry(exc=exc, countdown=120)
+            raise self.retry(exc=exc, countdown=120 * (2 ** self.request.retries))
 
 
-# === MAINTENANCE TASKS ===
+# === CACHE MANAGEMENT TASKS ===
 
 @shared_task
 def cleanup_expired_cache():
     """
-    Clean up expired cache entries and perform cache maintenance.
+    Clean up expired cache entries.
     """
     try:
-        if not app_settings.USE_REDIS_CACHE:
-            logger.info("Redis cache not enabled, skipping cleanup")
-            return
-        
-        from django.core.cache import cache
-        
-        # Clear any manually managed cache patterns
-        # This is a placeholder - actual implementation depends on cache backend
-        logger.info("Cache cleanup completed")
+        if app_settings.USE_REDIS_CACHE:
+            from django.core.cache import cache
+            
+            # This is handled automatically by Redis TTL
+            # but we can do additional cleanup here if needed
+            logger.info("Cache cleanup completed")
         
     except Exception as exc:
         logger.error(f"Cache cleanup failed: {exc}")
@@ -348,24 +391,33 @@ def cleanup_expired_cache():
 def generate_testimonial_stats():
     """
     Generate and cache testimonial statistics.
-    This can be run periodically to keep stats fresh.
     """
     try:
         from .models import Testimonial
-        from .utils import get_cache_key, cache_get_or_set
+        from django.core.cache import cache
+        from django.db.models import Count, Avg
         
-        def compute_stats():
-            return Testimonial.objects.get_stats()
+        stats = {
+            'total': Testimonial.objects.count(),
+            'approved': Testimonial.objects.filter(status='approved').count(),
+            'pending': Testimonial.objects.filter(status='pending').count(),
+            'rejected': Testimonial.objects.filter(status='rejected').count(),
+            'featured': Testimonial.objects.filter(status='featured').count(),
+            'average_rating': Testimonial.objects.filter(
+                status='approved'
+            ).aggregate(Avg('rating'))['rating__avg'] or 0,
+            'by_category': list(
+                Testimonial.objects.filter(status='approved')
+                .values('category__name')
+                .annotate(count=Count('id'))
+            ),
+        }
         
-        # Generate and cache stats
-        cache_key = get_cache_key('stats')
-        stats = cache_get_or_set(
-            cache_key, 
-            compute_stats, 
-            timeout=app_settings.CACHE_TIMEOUT * 2  # Cache stats longer
-        )
+        # Cache the stats
+        cache_key = f"{app_settings.CACHE_KEY_PREFIX}_stats"
+        cache.set(cache_key, stats, app_settings.CACHE_TIMEOUT)
         
-        logger.info(f"Generated testimonial stats: {stats['total']} total testimonials")
+        logger.info("Testimonial statistics generated and cached")
         return stats
         
     except Exception as exc:
@@ -428,7 +480,7 @@ def send_testimonial_email(testimonial_id: str, email_type: str,
         )
     else:
         return send_testimonial_notification_email(
-            testimonial_id, email_type, recipient_email, context_data
+            None, testimonial_id, email_type, recipient_email, context_data
         )
 
 
@@ -439,7 +491,7 @@ def send_admin_notification(testimonial_id: str, notification_type: str):
     if app_settings.USE_CELERY and CELERY_AVAILABLE:
         return send_admin_notification_email.delay(testimonial_id, notification_type)
     else:
-        return send_admin_notification_email(testimonial_id, notification_type)
+        return send_admin_notification_email(None, testimonial_id, notification_type)
 
 
 def process_media(media_id: str):
@@ -449,7 +501,7 @@ def process_media(media_id: str):
     if app_settings.USE_CELERY and CELERY_AVAILABLE:
         return process_testimonial_media.delay(media_id)
     else:
-        return process_testimonial_media(media_id)
+        return process_testimonial_media(None, media_id)
 
 
 def bulk_moderate(testimonial_ids: list, action: str, user_id: int = None, 
@@ -460,4 +512,4 @@ def bulk_moderate(testimonial_ids: list, action: str, user_id: int = None,
     if app_settings.USE_CELERY and CELERY_AVAILABLE:
         return bulk_moderate_testimonials.delay(testimonial_ids, action, user_id, extra_data)
     else:
-        return bulk_moderate_testimonials(testimonial_ids, action, user_id, extra_data)
+        return bulk_moderate_testimonials(None, testimonial_ids, action, user_id, extra_data)

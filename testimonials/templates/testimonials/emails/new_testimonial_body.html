@@ -1,0 +1,149 @@
+{% load i18n %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% trans "New Testimonial Submitted" %}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Arial', 'Helvetica', sans-serif; background-color: #f4f4f4;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td align="center" style="padding: 40px 0;">
+                <table role="presentation" style="width: 600px; border-collapse: collapse; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: bold;">
+                                🔔 {% trans "New Testimonial Submitted" %}
+                            </h1>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <p style="margin: 0 0 25px; font-size: 16px; line-height: 1.6; color: #333333;">
+                                {% blocktrans with site_name=site_name %}
+                                A new testimonial has been submitted on {{ site_name }} and is awaiting your review.
+                                {% endblocktrans %}
+                            </p>
+                            
+                            <!-- Testimonial Details Box -->
+                            <div style="background-color: #f8f9fa; border-left: 4px solid #667eea; padding: 25px; margin: 25px 0; border-radius: 4px;">
+                                <!-- Author Info -->
+                                <table style="width: 100%; margin-bottom: 20px;">
+                                    <tr>
+                                        <td style="padding: 8px 0; font-size: 14px; color: #666; width: 120px;">
+                                            <strong>{% trans "Author:" %}</strong>
+                                        </td>
+                                        <td style="padding: 8px 0; font-size: 14px; color: #333;">
+                                            {{ testimonial.author_name }}
+                                        </td>
+                                    </tr>
+                                    {% if testimonial.author_email %}
+                                    <tr>
+                                        <td style="padding: 8px 0; font-size: 14px; color: #666;">
+                                            <strong>{% trans "Email:" %}</strong>
+                                        </td>
+                                        <td style="padding: 8px 0; font-size: 14px; color: #333;">
+                                            <a href="mailto:{{ testimonial.author_email }}" style="color: #667eea; text-decoration: none;">
+                                                {{ testimonial.author_email }}
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if testimonial.company %}
+                                    <tr>
+                                        <td style="padding: 8px 0; font-size: 14px; color: #666;">
+                                            <strong>{% trans "Company:" %}</strong>
+                                        </td>
+                                        <td style="padding: 8px 0; font-size: 14px; color: #333;">
+                                            {{ testimonial.company }}
+                                        </td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if testimonial.category %}
+                                    <tr>
+                                        <td style="padding: 8px 0; font-size: 14px; color: #666;">
+                                            <strong>{% trans "Category:" %}</strong>
+                                        </td>
+                                        <td style="padding: 8px 0; font-size: 14px; color: #333;">
+                                            {{ testimonial.category.name }}
+                                        </td>
+                                    </tr>
+                                    {% endif %}
+                                    <tr>
+                                        <td style="padding: 8px 0; font-size: 14px; color: #666;">
+                                            <strong>{% trans "Rating:" %}</strong>
+                                        </td>
+                                        <td style="padding: 8px 0; font-size: 14px; color: #333;">
+                                            {% for i in "12345"|make_list %}
+                                                {% if forloop.counter <= testimonial.rating %}
+                                                    <span style="color: #ffc107; font-size: 18px;">★</span>
+                                                {% else %}
+                                                    <span style="color: #e0e0e0; font-size: 18px;">☆</span>
+                                                {% endif %}
+                                            {% endfor %}
+                                            <span style="margin-left: 8px; color: #666;">({{ testimonial.rating }}/5)</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 8px 0; font-size: 14px; color: #666;">
+                                            <strong>{% trans "Status:" %}</strong>
+                                        </td>
+                                        <td style="padding: 8px 0; font-size: 14px;">
+                                            <span style="display: inline-block; padding: 4px 12px; background-color: #ffc107; color: #333; border-radius: 12px; font-size: 12px; font-weight: bold;">
+                                                {{ testimonial.get_status_display }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </table>
+                                
+                                <!-- Testimonial Content -->
+                                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
+                                    <p style="margin: 0 0 10px; font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px;">
+                                        {% trans "Testimonial Content:" %}
+                                    </p>
+                                    <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #333; font-style: italic; background-color: #ffffff; padding: 15px; border-radius: 4px;">
+                                        "{{ testimonial.content }}"
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            {% if site_url %}
+                            <div style="text-align: center; margin: 30px 0;">
+                                <a href="{{ site_url }}{% url 'admin:testimonials_testimonial_change' testimonial.id %}" style="display: inline-block; padding: 14px 35px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px;">
+                                    {% trans "Review Testimonial" %}
+                                </a>
+                            </div>
+                            {% endif %}
+                            
+                            <div style="background-color: #e3f2fd; padding: 15px; border-radius: 4px; margin-top: 25px;">
+                                <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #1565c0;">
+                                    <strong>💡 {% trans "Quick Actions:" %}</strong><br>
+                                    {% trans "Log in to your admin panel to approve, reject, or respond to this testimonial." %}
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8f9fa; padding: 30px; text-align: center; border-top: 1px solid #e0e0e0;">
+                            <p style="margin: 0 0 10px; font-size: 14px; color: #666;">
+                                <strong>{{ site_name }}</strong><br>
+                                {% trans "Testimonials Management System" %}
+                            </p>
+                            
+                            <p style="margin: 15px 0 0; font-size: 12px; color: #999;">
+                                {% trans "This is an automated notification. Please do not reply to this email." %}
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

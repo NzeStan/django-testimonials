@@ -1,3 +1,5 @@
+# testimonials/signals.py
+
 import logging
 from django.db.models.signals import post_save, pre_save, post_delete
 from django.dispatch import Signal, receiver
@@ -57,8 +59,8 @@ def testimonial_pre_save(sender, instance, **kwargs):
             # Send signal
             testimonial_approved.send(sender=sender, instance=instance)
             
-            # Send approval email (async if Celery enabled)
-            if instance.author_email:
+            # Send approval email (async if Celery enabled) - CHECK SETTINGS FIRST
+            if app_settings.SEND_EMAIL_NOTIFICATIONS and instance.author_email:
                 try:
                     from .tasks import send_testimonial_email
                     execute_task(
@@ -67,20 +69,27 @@ def testimonial_pre_save(sender, instance, **kwargs):
                         'approved',
                         instance.author_email
                     )
+                    logger.info(f"Approval email queued for testimonial {instance.pk}")
                 except Exception as e:
                     logger.error(f"Error queuing approval email: {e}")
+            else:
+                if not app_settings.SEND_EMAIL_NOTIFICATIONS:
+                    logger.debug(f"Email notifications disabled - skipping approval email for {instance.pk}")
+                elif not instance.author_email:
+                    logger.debug(f"No author email - skipping approval email for {instance.pk}")
 
         # Handle REJECTED
         elif instance.status == TestimonialStatus.REJECTED:
             if not instance.rejection_reason:
-                instance.rejection_reason = "Status changed from approved to rejected."
-
+                instance.rejection_reason = "Status changed to rejected."
+            
+            logger.info(f"Sending testimonial_rejected signal for {instance.pk}")
             testimonial_rejected.send(
                 sender=sender, instance=instance, reason=instance.rejection_reason
             )
 
-            # Send rejection email (async if Celery enabled)
-            if instance.author_email:
+            # Send rejection email (async if Celery enabled) - CHECK SETTINGS FIRST
+            if app_settings.SEND_EMAIL_NOTIFICATIONS and instance.author_email:
                 try:
                     from .tasks import send_testimonial_email
                     execute_task(
@@ -90,15 +99,23 @@ def testimonial_pre_save(sender, instance, **kwargs):
                         instance.author_email,
                         {'reason': instance.rejection_reason}
                     )
+                    logger.info(f"Rejection email queued for testimonial {instance.pk}")
                 except Exception as e:
                     logger.error(f"Error queuing rejection email: {e}")
+            else:
+                if not app_settings.SEND_EMAIL_NOTIFICATIONS:
+                    logger.debug(f"Email notifications disabled - skipping rejection email for {instance.pk}")
+                elif not instance.author_email:
+                    logger.debug(f"No author email - skipping rejection email for {instance.pk}")
 
         # Handle FEATURED
         elif instance.status == TestimonialStatus.FEATURED:
+            logger.info(f"Testimonial {instance.pk} featured")
             testimonial_featured.send(sender=sender, instance=instance)
 
         # Handle ARCHIVED
         elif instance.status == TestimonialStatus.ARCHIVED:
+            logger.info(f"Testimonial {instance.pk} archived")
             testimonial_archived.send(sender=sender, instance=instance)
 
         # Invalidate cache for status changes
@@ -110,12 +127,13 @@ def testimonial_pre_save(sender, instance, **kwargs):
 
     # --- Response added ---
     if not old_instance.response and instance.response:
+        logger.info(f"Response added to testimonial {instance.pk}")
         testimonial_responded.send(
             sender=sender, instance=instance, response=instance.response
         )
 
-        # Send response email (async if Celery enabled)
-        if instance.author_email:
+        # Send response email (async if Celery enabled) - CHECK SETTINGS FIRST
+        if app_settings.SEND_EMAIL_NOTIFICATIONS and instance.author_email:
             try:
                 from .tasks import send_testimonial_email
                 execute_task(
@@ -125,8 +143,14 @@ def testimonial_pre_save(sender, instance, **kwargs):
                     instance.author_email,
                     {'response': instance.response}
                 )
+                logger.info(f"Response email queued for testimonial {instance.pk}")
             except Exception as e:
                 logger.error(f"Error queuing response email: {e}")
+        else:
+            if not app_settings.SEND_EMAIL_NOTIFICATIONS:
+                logger.debug(f"Email notifications disabled - skipping response email for {instance.pk}")
+            elif not instance.author_email:
+                logger.debug(f"No author email - skipping response email for {instance.pk}")
 
 
 @receiver(post_save, sender=Testimonial)
@@ -148,8 +172,8 @@ def testimonial_post_save(sender, instance, created, **kwargs):
     testimonial_created.send(sender=sender, instance=instance)
     logger.info(f"New testimonial created: ID {instance.pk}")
 
-    # Send admin notification (async if Celery enabled)
-    if app_settings.NOTIFICATION_EMAIL:
+    # Send admin notification (async if Celery enabled) - CHECK SETTINGS FIRST
+    if app_settings.SEND_ADMIN_NOTIFICATIONS and app_settings.NOTIFICATION_EMAIL:
         try:
             from .tasks import send_admin_notification
             execute_task(
@@ -157,8 +181,14 @@ def testimonial_post_save(sender, instance, created, **kwargs):
                 str(instance.pk),
                 'new_testimonial'
             )
+            logger.info(f"Admin notification queued for new testimonial {instance.pk}")
         except Exception as e:
             logger.error(f"Error queuing admin notification: {e}")
+    else:
+        if not app_settings.SEND_ADMIN_NOTIFICATIONS:
+            logger.debug(f"Admin notifications disabled - skipping notification for {instance.pk}")
+        elif not app_settings.NOTIFICATION_EMAIL:
+            logger.debug(f"No admin notification email configured - skipping notification for {instance.pk}")
 
     # Invalidate cache for new testimonial
     invalidate_testimonial_cache(
@@ -219,64 +249,37 @@ def testimonial_media_post_delete(sender, instance, **kwargs):
 @receiver(testimonial_approved)
 def invalidate_cache_on_approval(sender, instance, **kwargs):
     """Invalidate relevant cache entries when a testimonial is approved."""
+    logger.debug(f"Invalidating cache on approval for testimonial {instance.pk}")
     invalidate_testimonial_cache(
         testimonial_id=instance.pk,
-        category_id=instance.category_id,
-        user_id=instance.author_id
+        category_id=instance.category_id
     )
-    
-    # Specifically invalidate featured testimonials if this becomes featured
-    if instance.status == TestimonialStatus.FEATURED:
-        try:
-            cache.delete(get_cache_key('featured_testimonials'))
-        except Exception as e:
-            logger.warning(f"Failed to invalidate featured testimonials cache: {e}")
+
+
+@receiver(testimonial_rejected)
+def invalidate_cache_on_rejection(sender, instance, **kwargs):
+    """Invalidate relevant cache entries when a testimonial is rejected."""
+    logger.debug(f"Invalidating cache on rejection for testimonial {instance.pk}")
+    invalidate_testimonial_cache(
+        testimonial_id=instance.pk,
+        category_id=instance.category_id
+    )
 
 
 @receiver(testimonial_featured)
 def invalidate_cache_on_feature(sender, instance, **kwargs):
-    """Invalidate cache when a testimonial is featured."""
-    
-    try:
-        # Invalidate featured testimonials cache
-        cache.delete(get_cache_key('featured_testimonials'))
-        
-        # Invalidate general caches
-        invalidate_testimonial_cache(
-            testimonial_id=instance.pk,
-            category_id=instance.category_id,
-            user_id=instance.author_id
-        )
-    except Exception as e:
-        logger.warning(f"Failed to invalidate cache on feature: {e}")
-
-
-# === PERFORMANCE MONITORING SIGNAL HANDLERS ===
-
-@receiver(testimonial_created)
-def monitor_testimonial_creation_rate(sender, instance, **kwargs):
-    """Monitor testimonial creation rate for performance insights."""
-    try:
-        # Increment daily counter
-        today = timezone.now().date().isoformat()
-        counter_key = get_cache_key('daily_testimonial_count', today)
-        
-        if app_settings.USE_REDIS_CACHE:
-            current_count = cache.get(counter_key, 0)
-            cache.set(counter_key, current_count + 1, timeout=86400)  # 24 hours
-            
-            # Log if high volume
-            if current_count > 100:  # Threshold for high volume
-                logger.info(f"High testimonial volume detected: {current_count} testimonials today")
-                
-    except Exception as e:
-        logger.warning(f"Failed to monitor testimonial creation rate: {e}")
+    """Invalidate relevant cache entries when a testimonial is featured."""
+    logger.debug(f"Invalidating cache on feature for testimonial {instance.pk}")
+    invalidate_testimonial_cache(
+        testimonial_id=instance.pk,
+        category_id=instance.category_id
+    )
 
 
 # === EXAMPLE CUSTOM SIGNAL HANDLERS ===
-# These are examples that can be connected in the integrating application
+# These are examples that developers can use or modify
 
-def notify_admin_on_testimonial_created(sender, instance, **kwargs):
+def notify_admin_on_new_testimonial(sender, instance, **kwargs):
     """Example handler for testimonial_created signal."""
     logger.info(f"Admin notification for new testimonial: {instance.pk}")
     # Actual notification logic would go here
@@ -323,7 +326,6 @@ def handle_bulk_approval(testimonial_ids, user=None):
     invalidate_testimonial_cache()
     
     # Log bulk action
-    
     log_testimonial_action(
         None,  # No specific testimonial
         "bulk_approve",
@@ -363,44 +365,13 @@ def handle_bulk_rejection(testimonial_ids, reason, user=None):
 @receiver(testimonial_featured)
 def update_search_index_on_publish(sender, instance, **kwargs):
     """Update search index when testimonial is published."""
-    try:
-        # This is a placeholder for search index integration
-        # In a real implementation, this would update Elasticsearch, Solr, etc.
-        logger.debug(f"Updating search index for published testimonial {instance.pk}")
-        
-        # Example: Add to search index
-        # search_index.add_document({
-        #     'id': str(instance.pk),
-        #     'content': instance.content,
-        #     'author': instance.author_name,
-        #     'rating': instance.rating,
-        #     'category': instance.category.name if instance.category else None,
-        #     'status': instance.status,
-        #     'created_at': instance.created_at.isoformat(),
-        # })
-        
-    except Exception as e:
-        logger.warning(f"Failed to update search index: {e}")
+    logger.debug(f"Updating search index for published testimonial {instance.pk}")
+    # Search index update logic would go here
 
 
 @receiver(testimonial_archived)
 @receiver(testimonial_rejected)
 def remove_from_search_index_on_unpublish(sender, instance, **kwargs):
     """Remove from search index when testimonial is unpublished."""
-    try:
-        # This is a placeholder for search index integration
-        logger.debug(f"Removing testimonial {instance.pk} from search index")
-        
-        # Example: Remove from search index
-        # search_index.remove_document(str(instance.pk))
-        
-    except Exception as e:
-        logger.warning(f"Failed to remove from search index: {e}")
-
-
-# These signal connections are examples and can be uncommented based on needs:
-# testimonial_created.connect(notify_admin_on_testimonial_created)
-# testimonial_approved.connect(update_statistics_on_testimonial_approved)
-# testimonial_rejected.connect(log_testimonial_rejection)
-# testimonial_approved.connect(update_user_reputation_on_approval)
-# testimonial_featured.connect(trigger_recommendation_update)
+    logger.debug(f"Removing testimonial {instance.pk} from search index")
+    # Search index removal logic would go here
