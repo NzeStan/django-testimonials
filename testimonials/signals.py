@@ -32,16 +32,30 @@ def testimonial_pre_save(sender, instance, **kwargs):
     """
     Optimized pre-save handler for testimonials.
     Handles status changes, logging, and cache invalidation.
+    FIXED: Now works correctly with update_fields parameter.
     """
     if not instance.pk:  # Skip for new objects
         return
 
-    try:
-        old_instance = Testimonial.objects.only(
-            'status', 'response', 'approved_at', 'approved_by'
-        ).get(pk=instance.pk)
-    except Testimonial.DoesNotExist:
-        return
+    # CRITICAL FIX: Check if response is being updated
+    update_fields = kwargs.get('update_fields', None)
+    
+    # If update_fields is specified and 'response' is in it, load only necessary fields
+    if update_fields:
+        fields_to_load = ['status', 'response', 'approved_at', 'approved_by']
+        # Only load fields that we need for comparison
+        try:
+            old_instance = Testimonial.objects.only(*fields_to_load).get(pk=instance.pk)
+        except Testimonial.DoesNotExist:
+            return
+    else:
+        # Load all fields normally
+        try:
+            old_instance = Testimonial.objects.only(
+                'status', 'response', 'approved_at', 'approved_by'
+            ).get(pk=instance.pk)
+        except Testimonial.DoesNotExist:
+            return
 
     # --- Status changed ---
     if old_instance.status != instance.status:
@@ -126,31 +140,34 @@ def testimonial_pre_save(sender, instance, **kwargs):
         )
 
     # --- Response added ---
-    if not old_instance.response and instance.response:
-        logger.info(f"Response added to testimonial {instance.pk}")
-        testimonial_responded.send(
-            sender=sender, instance=instance, response=instance.response
-        )
+    # ✅ FIXED: Check if 'response' is being updated (either in update_fields or changed)
+    if update_fields is None or 'response' in update_fields:
+        # Only check for response changes if response field is being updated
+        if not old_instance.response and instance.response:
+            logger.info(f"Response added to testimonial {instance.pk}")
+            testimonial_responded.send(
+                sender=sender, instance=instance, response=instance.response
+            )
 
-        # Send response email (async if Celery enabled) - CHECK SETTINGS FIRST
-        if app_settings.SEND_EMAIL_NOTIFICATIONS and instance.author_email:
-            try:
-                from .tasks import send_testimonial_email
-                execute_task(
-                    send_testimonial_email,
-                    str(instance.pk),
-                    'response',
-                    instance.author_email,
-                    {'response': instance.response}
-                )
-                logger.info(f"Response email queued for testimonial {instance.pk}")
-            except Exception as e:
-                logger.error(f"Error queuing response email: {e}")
-        else:
-            if not app_settings.SEND_EMAIL_NOTIFICATIONS:
-                logger.debug(f"Email notifications disabled - skipping response email for {instance.pk}")
-            elif not instance.author_email:
-                logger.debug(f"No author email - skipping response email for {instance.pk}")
+            # Send response email (async if Celery enabled) - CHECK SETTINGS FIRST
+            if app_settings.SEND_EMAIL_NOTIFICATIONS and instance.author_email:
+                try:
+                    from .tasks import send_testimonial_email
+                    execute_task(
+                        send_testimonial_email,
+                        str(instance.pk),
+                        'response',
+                        instance.author_email,
+                        {'response': instance.response}
+                    )
+                    logger.info(f"Response email queued for testimonial {instance.pk}")
+                except Exception as e:
+                    logger.error(f"Error queuing response email: {e}")
+            else:
+                if not app_settings.SEND_EMAIL_NOTIFICATIONS:
+                    logger.debug(f"Email notifications disabled - skipping response email for {instance.pk}")
+                elif not instance.author_email:
+                    logger.debug(f"No author email - skipping response email for {instance.pk}")
 
 
 @receiver(post_save, sender=Testimonial)

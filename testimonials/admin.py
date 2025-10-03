@@ -160,8 +160,13 @@ class TestimonialAdmin(admin.ModelAdmin):
         messages.success(request, _('%(count)d testimonials were approved.') % {'count': updated})
     approve_testimonials.short_description = _('Approve selected testimonials')
     
+
     def reject_testimonials(self, request, queryset):
-        """Admin action to reject testimonials."""
+        """
+        Admin action to reject testimonials.
+        FIXED: Skip Django's default confirmation to avoid double confirmation.
+        """
+        # Check if we're processing the final form submission
         if 'apply' in request.POST:
             rejection_reason = request.POST.get('rejection_reason', '')
             updated = 0
@@ -176,15 +181,25 @@ class TestimonialAdmin(admin.ModelAdmin):
             messages.success(request, _('%(count)d testimonials were rejected.') % {'count': updated})
             return HttpResponseRedirect(request.get_full_path())
         
-        context = {
-            'title': _('Enter rejection reason'),
-            'queryset': queryset,
-            'action_checkbox_name': admin.helpers.ACTION_CHECKBOX_NAME,
-            'action': 'reject_testimonials',
-            'opts': self.model._meta,
-        }
+        # ✅ CRITICAL FIX: Check if this is the first call (from action dropdown)
+        # If '_selected_action' is in POST but 'apply' is not, show our custom form
+        # This skips Django's default intermediate confirmation page
+        if request.POST.get('_selected_action'):
+            # This is the first submission from selecting the action
+            # Go directly to our custom rejection form (skip Django's default confirmation)
+            context = {
+                'title': _('Enter rejection reason'),
+                'queryset': queryset,
+                'action_checkbox_name': admin.helpers.ACTION_CHECKBOX_NAME,
+                'action': 'reject_testimonials',
+                'opts': self.model._meta,
+            }
+            
+            return render(request, 'testimonials/admin/testimonials/reject_testimonials.html', context)
         
-        return render(request, 'admin/testimonials/reject_testimonials.html', context)
+        # This shouldn't happen, but just in case
+        return None
+
     reject_testimonials.short_description = _('Reject selected testimonials')
     
     def feature_testimonials(self, request, queryset):

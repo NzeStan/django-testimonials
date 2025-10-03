@@ -119,76 +119,99 @@
 </div>
 
 <script>
-function confirmRejection() {
-    const reason = document.getElementById('id_rejection_reason').value.trim();
-    const testimonialCount = {{ queryset|length }};
+(function() {
+    'use strict';
     
-    if (!reason) {
-        alert('{% trans "Please provide a rejection reason." %}');
-        document.getElementById('id_rejection_reason').focus();
-        return false;
-    }
+    // ✅ FIX: Pre-render all Django template variables BEFORE JavaScript
+    var TESTIMONIAL_COUNT = parseInt('{{ queryset|length }}', 10);
     
-    if (reason.length < 10) {
-        alert('{% trans "Please provide a more detailed rejection reason (at least 10 characters)." %}');
-        document.getElementById('id_rejection_reason').focus();
-        return false;
-    }
+    // ✅ FIX: Pre-translate all strings
+    var TRANSLATIONS = {
+        provideReason: '{% trans "Please provide a rejection reason." %}',
+        detailedReason: '{% trans "Please provide a more detailed rejection reason (at least 10 characters)." %}',
+        areYouSure: '{% trans "Are you sure you want to reject" %}',
+        testimonials: '{% trans "testimonial(s)?" %}',
+        rejectionReason: '{% trans "Rejection reason:" %}',
+        cannotUndo: '{% trans "This action cannot be undone." %}',
+        unsavedChanges: '{% trans "You have unsaved changes. Any entered rejection reason will be lost." %}',
+        cancelConfirm: '{% trans "Are you sure you want to cancel? Any entered rejection reason will be lost." %}'
+    };
     
-    const confirmMessage = '{% trans "Are you sure you want to reject" %} ' + testimonialCount + ' {% trans "testimonial(s)?" %}\n\n' +
-                          '{% trans "Rejection reason:" %} ' + reason.substring(0, 100) + (reason.length > 100 ? '...' : '') + '\n\n' +
-                          '{% trans "This action cannot be undone." %}';
-    
-    return confirm(confirmMessage);
-}
-
-// Prevent accidental navigation away
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.querySelector('.bulk-action-form');
-    const textarea = document.getElementById('id_rejection_reason');
-    let isDirty = false;
-    
-    textarea.addEventListener('input', function() {
-        isDirty = true;
-    });
-    
-    window.addEventListener('beforeunload', function(e) {
-        if (isDirty && textarea.value.trim()) {
-            e.preventDefault();
-            e.returnValue = '{% trans "You have unsaved changes. Any entered rejection reason will be lost." %}';
-            return e.returnValue;
+    // ✅ FIX: Define function in global scope for onclick handler
+    window.confirmRejection = function() {
+        var reasonField = document.getElementById('id_rejection_reason');
+        if (!reasonField) {
+            return false;
         }
-    });
+        
+        var reason = reasonField.value.trim();
+        
+        if (!reason) {
+            alert(TRANSLATIONS.provideReason);
+            reasonField.focus();
+            return false;
+        }
+        
+        if (reason.length < 10) {
+            alert(TRANSLATIONS.detailedReason);
+            reasonField.focus();
+            return false;
+        }
+        
+        var reasonPreview = reason.substring(0, 100);
+        if (reason.length > 100) {
+            reasonPreview += '...';
+        }
+        
+        var confirmMessage = TRANSLATIONS.areYouSure + ' ' + TESTIMONIAL_COUNT + ' ' + TRANSLATIONS.testimonials + '\n\n' +
+                            TRANSLATIONS.rejectionReason + ' ' + reasonPreview + '\n\n' +
+                            TRANSLATIONS.cannotUndo;
+        
+        return confirm(confirmMessage);
+    };
     
-    form.addEventListener('submit', function() {
-        isDirty = false;
-    });
-    
-    document.querySelector('.cancel-link').addEventListener('click', function(e) {
-        if (isDirty && textarea.value.trim()) {
-            if (!confirm('{% trans "Are you sure you want to cancel? Any entered rejection reason will be lost." %}')) {
+    // Prevent accidental navigation away
+    document.addEventListener('DOMContentLoaded', function() {
+        var form = document.querySelector('.bulk-action-form');
+        var textarea = document.getElementById('id_rejection_reason');
+        var isDirty = false;
+        
+        if (!textarea || !form) {
+            return;
+        }
+        
+        textarea.addEventListener('input', function() {
+            isDirty = true;
+        });
+        
+        window.addEventListener('beforeunload', function(e) {
+            if (isDirty && textarea.value.trim()) {
                 e.preventDefault();
+                e.returnValue = TRANSLATIONS.unsavedChanges;
+                return e.returnValue;
             }
+        });
+        
+        form.addEventListener('submit', function() {
+            isDirty = false;
+        });
+        
+        var cancelLink = document.querySelector('.cancel-link');
+        if (cancelLink) {
+            cancelLink.addEventListener('click', function(e) {
+                if (isDirty && textarea.value.trim()) {
+                    if (!confirm(TRANSLATIONS.cancelConfirm)) {
+                        e.preventDefault();
+                        return false;
+                    }
+                }
+            });
         }
     });
-});
+})();
 </script>
 
 <style>
-.testimonial-item:hover {
-    background: #f0f0f0 !important;
-    transition: background-color 0.2s ease;
-}
-
-.cancel-link:hover {
-    background: #5a6268 !important;
-    text-decoration: none !important;
-}
-
-input[type="submit"]:hover {
-    background: #c82333 !important;
-}
-
 .status-badge {
     display: inline-block;
     padding: 2px 8px;
@@ -197,74 +220,10 @@ input[type="submit"]:hover {
     font-weight: bold;
     text-transform: uppercase;
 }
-
-.status-badge.approved {
-    background-color: #7bed9f;
-    color: #2d5016;
-}
-
-.status-badge.pending {
-    background-color: #ffc107;
-    color: #856404;
-}
-
-.status-badge.rejected {
-    background-color: #ff6b6b;
-    color: #721c24;
-}
-
-.status-badge.featured {
-    background-color: #70a1ff;
-    color: #1e3a8a;
-}
-
-.status-badge.archived {
-    background-color: #a4b0be;
-    color: #374151;
-}
-
-@media (max-width: 768px) {
-    .testimonial-header {
-        flex-direction: column !important;
-        align-items: flex-start !important;
-        gap: 10px;
-    }
-    
-    .testimonial-meta {
-        flex-direction: column !important;
-        align-items: flex-start !important;
-        gap: 5px;
-    }
-    
-    .submit-row {
-        text-align: center !important;
-    }
-    
-    .cancel-link, input[type="submit"] {
-        display: block !important;
-        width: 100% !important;
-        margin: 5px 0 !important;
-        text-align: center;
-    }
-}
-
-/* Print styles */
-@media print {
-    .submit-row, .breadcrumbs {
-        display: none !important;
-    }
-    
-    .testimonial-item {
-        break-inside: avoid;
-        border: 1px solid #000 !important;
-        margin-bottom: 20px !important;
-    }
-    
-    .status-badge {
-        border: 1px solid #000 !important;
-        color: #000 !important;
-        background: white !important;
-    }
-}
+.status-badge.pending { background-color: #f8c291; color: #333; }
+.status-badge.approved { background-color: #7bed9f; color: #333; }
+.status-badge.rejected { background-color: #ff6b6b; color: white; }
+.status-badge.featured { background-color: #70a1ff; color: white; }
+.status-badge.archived { background-color: #a4b0be; color: white; }
 </style>
 {% endblock %}
