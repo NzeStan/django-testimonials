@@ -520,19 +520,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         testimonial.approved_by = request.user
         testimonial.save(update_fields=['status', 'approved_at', 'approved_by'])
 
-        # Background email notification
-        if app_settings.USE_CELERY and testimonial.author_email:
-            try:
-                from ..tasks import send_testimonial_email
-                execute_task(
-                    send_testimonial_email,
-                    str(testimonial.pk),
-                    'approved',
-                    testimonial.author_email
-                )
-            except Exception as e:
-                log_testimonial_action(testimonial, "approval_email_failed", 
-                                     request.user, str(e))
+        # Email will be sent automatically by the pre_save signal in signals.py
 
         # Log the approval
         log_testimonial_action(testimonial, "approve", request.user)
@@ -578,20 +566,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         testimonial.rejection_reason = rejection_reason
         testimonial.save(update_fields=['status', 'rejection_reason'])
 
-        # Background email notification
-        if app_settings.USE_CELERY and testimonial.author_email:
-            try:
-                from ..tasks import send_testimonial_email
-                execute_task(
-                    send_testimonial_email,
-                    str(testimonial.pk),
-                    'rejected',
-                    testimonial.author_email,
-                    {'reason': rejection_reason}
-                )
-            except Exception as e:
-                log_testimonial_action(testimonial, "rejection_email_failed", 
-                                     request.user, str(e))
+        # Email will be sent automatically by the pre_save signal in signals.py
 
         # Log the rejection
         log_testimonial_action(testimonial, "reject", request.user, notes=rejection_reason)
@@ -697,20 +672,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         testimonial.response_by = request.user
         testimonial.save(update_fields=['response', 'response_at', 'response_by'])
         
-        # Background email notification
-        if app_settings.USE_CELERY and testimonial.author_email:
-            try:
-                from ..tasks import send_testimonial_email
-                execute_task(
-                    send_testimonial_email,
-                    str(testimonial.pk),
-                    'response',
-                    testimonial.author_email,
-                    {'response': response_text}
-                )
-            except Exception as e:
-                log_testimonial_action(testimonial, "response_email_failed", 
-                                     request.user, str(e))
+        # Email will be sent automatically by the pre_save signal in signals.py
         
         # Log the action
         log_testimonial_action(testimonial, "respond", request.user)

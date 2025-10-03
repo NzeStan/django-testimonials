@@ -310,7 +310,19 @@ else:
 
 def _bulk_moderate_testimonials_impl(self, testimonial_ids: list, action: str, user_id: int = None, 
                                     extra_data: Dict[str, Any] = None):
-    """Implementation of bulk_moderate_testimonials."""
+    """
+    Implementation of bulk_moderate_testimonials.
+    
+    Args:
+        self: Celery task instance (or None if not using Celery)
+        testimonial_ids: List of testimonial IDs to process
+        action: Action to perform (approve, reject, feature, archive, verify, unverify)
+        user_id: ID of user performing the action
+        extra_data: Additional data (e.g., rejection_reason)
+    
+    Returns:
+        dict: Result of the bulk operation
+    """
     try:
         from .models import Testimonial
         from .constants import TestimonialStatus
@@ -326,30 +338,23 @@ def _bulk_moderate_testimonials_impl(self, testimonial_ids: list, action: str, u
             if action == 'approve':
                 if testimonial.status != TestimonialStatus.APPROVED:
                     testimonial.status = TestimonialStatus.APPROVED
+                    if user:
+                        testimonial.approved_by = user
+                        testimonial.approved_at = timezone.now()
                     testimonial.save()
                     updated_count += 1
-                    
-                    if app_settings.SEND_EMAIL_NOTIFICATIONS and testimonial.author_email:
-                        send_testimonial_notification_email(
-                            str(testimonial.id),
-                            'approved',
-                            testimonial.author_email
-                        )
+                    # ✅ Email will be sent automatically by pre_save signal in signals.py
             
             elif action == 'reject':
                 if testimonial.status != TestimonialStatus.REJECTED:
                     testimonial.status = TestimonialStatus.REJECTED
                     if extra_data and 'rejection_reason' in extra_data:
                         testimonial.rejection_reason = extra_data['rejection_reason']
+                    else:
+                        testimonial.rejection_reason = "Bulk rejection"
                     testimonial.save()
                     updated_count += 1
-                    
-                    if app_settings.SEND_EMAIL_NOTIFICATIONS and testimonial.author_email:
-                        send_testimonial_notification_email(
-                            str(testimonial.id),
-                            'rejected',
-                            testimonial.author_email
-                        )
+                    # ✅ Email will be sent automatically by pre_save signal in signals.py
             
             elif action == 'feature':
                 if testimonial.status != TestimonialStatus.FEATURED:
@@ -363,25 +368,58 @@ def _bulk_moderate_testimonials_impl(self, testimonial_ids: list, action: str, u
                     testimonial.save()
                     updated_count += 1
             
+            elif action == 'verify':
+                if not testimonial.is_verified:
+                    testimonial.is_verified = True
+                    testimonial.save()
+                    updated_count += 1
+            
+            elif action == 'unverify':
+                if testimonial.is_verified:
+                    testimonial.is_verified = False
+                    testimonial.save()
+                    updated_count += 1
+        
+        # Log bulk action
+        if updated_count > 0:
             log_testimonial_action(
-                testimonial,
+                None,  # No specific testimonial for bulk actions
                 f"bulk_{action}",
-                user=user,
-                extra_data=extra_data
+                user,
+                f"Bulk {action}: {updated_count}/{len(testimonials)} testimonials updated",
+                {
+                    'testimonial_ids': testimonial_ids,
+                    'action': action,
+                    'updated_count': updated_count,
+                    'total_count': len(testimonials)
+                }
             )
         
+        # Invalidate cache for all affected testimonials
         invalidate_testimonial_cache()
         
-        logger.info(f"Bulk {action} completed: {updated_count}/{len(testimonial_ids)} testimonials updated")
-        return updated_count
+        logger.info(f"Bulk {action} completed: {updated_count}/{len(testimonials)} testimonials updated")
+        
+        return {
+            'success': True,
+            'updated_count': updated_count,
+            'total': len(testimonials),
+            'action': action
+        }
         
     except Exception as exc:
-        logger.error(f"Bulk moderation failed: {exc}")
+        logger.error(f"Bulk moderation failed for action '{action}': {exc}")
         
+        # Retry the task if using Celery
         if self and hasattr(self, 'request') and hasattr(self, 'retry'):
-            if self.request.retries < 2:
+            if self.request.retries < self.max_retries:
                 raise self.retry(exc=exc, countdown=120 * (2 ** self.request.retries))
-
+        
+        return {
+            'success': False,
+            'error': str(exc),
+            'action': action
+        }
 
 # === CACHE MANAGEMENT TASKS ===
 
