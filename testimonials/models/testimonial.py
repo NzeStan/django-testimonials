@@ -1,3 +1,5 @@
+# testimonials/models/testimonial.py - UPDATED to use app_settings.USER_MODEL consistently
+
 from django.db import models
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
@@ -44,14 +46,14 @@ class TestimonialCategory(BaseModel):
     name = models.CharField(
         max_length=100, 
         verbose_name=_("Name"),
-        db_index=True,  # Index for faster filtering and sorting
+        db_index=True,
         help_text=_("Name of the testimonial category (e.g., Products, Services, Events).")
     )
     slug = models.SlugField(
         max_length=120, 
         unique=True, 
         verbose_name=_("Slug"),
-        db_index=True,  # Index for faster slug-based queries
+        db_index=True,
         help_text=_("Unique identifier for the category, used in URLs.")
     )
     description = models.TextField(
@@ -62,13 +64,13 @@ class TestimonialCategory(BaseModel):
     is_active = models.BooleanField(
         default=True, 
         verbose_name=_("Is Active"),
-        db_index=True,  # Index for active category filtering
+        db_index=True,
         help_text=_("If checked, this category is active and can be assigned to testimonials.")
     )
     order = models.PositiveIntegerField(
         default=0, 
         verbose_name=_("Order"),
-        db_index=True,  # Index for ordering
+        db_index=True,
         help_text=_("Controls the display order of categories. "
                     "Lower numbers appear first.")
     )
@@ -81,7 +83,7 @@ class TestimonialCategory(BaseModel):
         verbose_name_plural = _("Testimonial Categories")
         ordering = ['order', 'name']
         indexes = [
-            Index(fields=['is_active', 'order']),  # Compound index for common queries
+            Index(fields=['is_active', 'order']),
             Index(fields=['name']),
             Index(fields=['slug']),
         ]
@@ -90,21 +92,17 @@ class TestimonialCategory(BaseModel):
         return self.name
     
     def save(self, *args, **kwargs):
-        # Optimize string operations
         if self.name:
             self.name = string.capwords(self.name.strip())
 
-        # Generate unique slug efficiently
         if not self.slug:
             self.slug = get_unique_slug(self, 'name', max_length=120)
         
-        # Use update_fields for better performance when possible
         if self.pk and 'update_fields' not in kwargs:
             kwargs['update_fields'] = ['name', 'slug', 'description', 'is_active', 'order', 'updated_at']
         
         super().save(*args, **kwargs)
         
-        # Invalidate cache after save
         if app_settings.USE_REDIS_CACHE:
             invalidate_testimonial_cache(category_id=self.pk)
     
@@ -112,7 +110,6 @@ class TestimonialCategory(BaseModel):
         category_id = self.pk
         super().delete(*args, **kwargs)
         
-        # Invalidate cache after deletion
         if app_settings.USE_REDIS_CACHE:
             invalidate_testimonial_cache(category_id=category_id)
 
@@ -120,18 +117,19 @@ class TestimonialCategory(BaseModel):
 class Testimonial(BaseModel):
     """
     Highly optimized main testimonial model with performance enhancements.
+    ✅ UPDATED: Now uses app_settings.USER_MODEL consistently throughout.
     """
     __test__ = False
     
-    # Author information with optimized field types
+    # ✅ CONSISTENT USE OF app_settings.USER_MODEL
     author = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+        app_settings.USER_MODEL,  # ✅ Changed from settings.AUTH_USER_MODEL
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='testimonials',
         verbose_name=_("User"),
-        db_index=True,  # Index for user-based queries
+        db_index=True,
         help_text=_("Registered user who submitted the testimonial. "
                     "Optional if testimonial is provided by a guest.")
     )
@@ -139,13 +137,13 @@ class Testimonial(BaseModel):
         max_length=255,
         verbose_name=_("Author Name"),
         blank=True,
-        db_index=True,  # Index for author name searches
+        db_index=True,
         help_text=_("Full name of the testimonial author if not linked to a user account.")
     )
     author_email = models.EmailField(
         blank=True,
         verbose_name=_("Author Email"),
-        db_index=True,  # Index for email-based queries
+        db_index=True,
         help_text=_("Email address of the testimonial author. "
                     "Useful for verification or follow-up communication.")
     )
@@ -166,7 +164,7 @@ class Testimonial(BaseModel):
         max_length=255,
         blank=True,
         verbose_name=_("Company"),
-        db_index=True,  # Index for company-based searches
+        db_index=True,
         help_text=_("Company or organization associated with the author, if applicable.")
     )
     location = models.CharField(
@@ -184,19 +182,17 @@ class Testimonial(BaseModel):
         help_text=_("Profile picture of the testimonial author.")
     )
     
-    # Testimonial content with optimized text fields
     title = models.CharField(
         max_length=255,
         blank=True,
         verbose_name=_("Title"),
-        db_index=True,  # Index for title searches
+        db_index=True,
         help_text=_("Short descriptive title for the testimonial.")
     )
     content = models.TextField(
         validators=[validate_testimonial_content],
         verbose_name=_("Content"),
         help_text=_("Full testimonial text provided by the author.")
-        # Full-text search index would be added at database level
     )
     rating = models.PositiveSmallIntegerField(
         validators=[validate_rating],
@@ -209,7 +205,6 @@ class Testimonial(BaseModel):
         }
     )
     
-    # Categorization and metadata with optimized relationships
     category = models.ForeignKey(
         'TestimonialCategory',
         on_delete=models.SET_NULL,
@@ -217,7 +212,7 @@ class Testimonial(BaseModel):
         blank=True,
         related_name='testimonials',
         verbose_name=_("Category"),
-        db_index=True,  # Index for category filtering
+        db_index=True,
         help_text=_("Category under which this testimonial is grouped.")
     )
     source = models.CharField(
@@ -225,7 +220,7 @@ class Testimonial(BaseModel):
         choices=TestimonialSource.choices,
         default=TestimonialSource.WEBSITE,
         verbose_name=_("Source"),
-        db_index=True,  # Index for source filtering
+        db_index=True,
         help_text=_("Origin of the testimonial (e.g., Website, Mobile Apple, Email ).")
     )
     status = models.CharField(
@@ -233,37 +228,35 @@ class Testimonial(BaseModel):
         choices=TestimonialStatus.choices,
         default=TestimonialStatus.PENDING,
         verbose_name=_("Status"),
-        db_index=True,  # Critical index for status filtering
+        db_index=True,
         help_text=_("Moderation status of the testimonial.")
     )
     
-    # Flags and options with optimized boolean fields
     is_anonymous = models.BooleanField(
         default=False,
         verbose_name=_("Is Anonymous"),
-        db_index=True,  # Index for anonymous filtering
+        db_index=True,
     )
     is_verified = models.BooleanField(
         default=False,
         verbose_name=_("Is Verified"),
-        db_index=True,  # Index for verified filtering
+        db_index=True,
         help_text=_("Indicates whether this testimonial has been verified by an admin.")
     )
     display_order = models.PositiveIntegerField(
         default=0,
         verbose_name=_("Display Order"),
-        db_index=True,  # Index for ordering
+        db_index=True,
         help_text=_("Controls the order in which testimonials are displayed. "
                     "Lower numbers appear first.")
     )
     
-    # Additional fields with optimized indexes
     slug = models.SlugField(
         max_length=255,
         unique=True,
         blank=True,
         verbose_name=_("Slug"),
-        db_index=True,  # Index for slug-based queries
+        db_index=True,
         help_text=_("Unique slug used for testimonial URLs.")
     )
     ip_address = models.GenericIPAddressField(
@@ -282,19 +275,19 @@ class Testimonial(BaseModel):
         null=True,
         default=dict,
         verbose_name=_("Social Media"),
-        help_text=_("Links to the author’s social media profiles (JSON format).")
+        help_text=_("Links to the author's social media profiles (JSON format).")
     )
     
-    # Moderation fields with optimized relationships
+    # ✅ CONSISTENT USE OF app_settings.USER_MODEL
     approved_at = models.DateTimeField(
         blank=True,
         null=True,
         verbose_name=_("Approved At"),
-        db_index=True,  # Index for approval date queries
+        db_index=True,
         help_text=_("Date and time when the testimonial was approved.")
     )
     approved_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+        app_settings.USER_MODEL,  # ✅ Changed from settings.AUTH_USER_MODEL
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -308,7 +301,6 @@ class Testimonial(BaseModel):
         help_text=_("Reason provided for rejecting the testimonial, if applicable.")
     )
     
-    # Response field with optimized structure
     response = models.TextField(
         blank=True,
         verbose_name=_("Response"),
@@ -321,7 +313,7 @@ class Testimonial(BaseModel):
         help_text=_("Date and time when a response was made.")
     )
     response_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+        app_settings.USER_MODEL,  # ✅ Changed from settings.AUTH_USER_MODEL
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -330,7 +322,6 @@ class Testimonial(BaseModel):
         help_text=_("Admin user who responded to the testimonial.")
     )
 
-    # Extra fields for customization
     extra_data = models.JSONField(
         blank=True,
         null=True,
@@ -342,7 +333,6 @@ class Testimonial(BaseModel):
     )
     )
     
-    # Optimized manager
     objects = TestimonialManager()
     
     class Meta:
@@ -350,9 +340,7 @@ class Testimonial(BaseModel):
         verbose_name_plural = _("Testimonials")
         ordering = ['-display_order', '-created_at']
         
-        # Comprehensive indexing strategy for optimal performance
         indexes = [
-            # Single field indexes for common queries
             Index(fields=['status']),
             Index(fields=['rating']),
             Index(fields=['author_name']),
@@ -361,22 +349,15 @@ class Testimonial(BaseModel):
             Index(fields=['display_order']),
             Index(fields=['is_anonymous']),
             Index(fields=['is_verified']),
-            
-            # Compound indexes for complex queries
-            Index(fields=['status', 'created_at']),  # Published testimonials by date
-            Index(fields=['status', 'rating']),     # Published high-rated testimonials
-            Index(fields=['status', 'display_order']), # Published testimonials by order
-            Index(fields=['category', 'status']),   # Category testimonials by status
-            Index(fields=['author', 'status']),     # User testimonials by status
-            Index(fields=['rating', 'created_at']), # High-rated recent testimonials
-            Index(fields=['is_verified', 'status']), # Verified published testimonials
-            
-            # Partial indexes would be created at database level for:
-            # - WHERE status IN ('approved', 'featured') for published testimonials
-            # - WHERE is_anonymous = False for non-anonymous testimonials
+            Index(fields=['status', 'created_at']),
+            Index(fields=['status', 'rating']),
+            Index(fields=['status', 'display_order']),
+            Index(fields=['category', 'status']),
+            Index(fields=['author', 'status']),
+            Index(fields=['rating', 'created_at']),
+            Index(fields=['is_verified', 'status']),
         ]
         
-        # Database constraints for data integrity
         constraints = [
             models.CheckConstraint(
                 check=Q(rating__gte=1) & Q(rating__lte=app_settings.MAX_RATING),
@@ -392,22 +373,18 @@ class Testimonial(BaseModel):
         return f"{self.author_name}: {self.content[:50]}..."
     
     def save(self, *args, **kwargs):
-        # Optimize field processing
         self._normalize_text_fields()
         self._handle_anonymity()
         self._prefill_author_data()
         self._generate_slug()
         
-        # Use update_fields for better performance when possible
         if self.pk and 'update_fields' not in kwargs and hasattr(self, '_state'):
-            # Only update changed fields
             changed_fields = self._get_changed_fields()
             if changed_fields:
                 kwargs['update_fields'] = changed_fields + ['updated_at']
         
         super().save(*args, **kwargs)
         
-        # Invalidate cache after save
         if app_settings.USE_REDIS_CACHE:
             invalidate_testimonial_cache(
                 testimonial_id=self.pk,
@@ -416,14 +393,12 @@ class Testimonial(BaseModel):
             )
     
     def delete(self, *args, **kwargs):
-        # Store IDs for cache invalidation
         testimonial_id = self.pk
         category_id = self.category_id
         user_id = self.author_id
         
         super().delete(*args, **kwargs)
         
-        # Invalidate cache after deletion
         if app_settings.USE_REDIS_CACHE:
             invalidate_testimonial_cache(
                 testimonial_id=testimonial_id,
@@ -441,11 +416,7 @@ class Testimonial(BaseModel):
             self.company = self.company.strip()
     
     def _handle_anonymity(self):
-        """
-        Anonymity is a DISPLAY concern only.
-        Do NOT null author FK or wipe contact info here.
-        Ensure author_name is never empty when anonymous (DB constraint).
-        """
+        """Handle anonymity settings."""
         if self.is_anonymous:
             if not (self.author_name or "").strip():
                 self.author_name = _("Anonymous")
@@ -491,7 +462,6 @@ class Testimonial(BaseModel):
         except self.__class__.DoesNotExist:
             return None
     
-    # Optimized properties with caching
     @property
     def is_published(self):
         """Check if the testimonial is published (approved or featured)."""
@@ -509,26 +479,18 @@ class Testimonial(BaseModel):
         """Get the author display name, respecting anonymity."""
         return _("Anonymous") if self.is_anonymous else self.author_name
     
-    # Optimized action methods
     def approve(self, user=None):
-        """
-        Approve the testimonial with optimized update.
-        """
-        
-        
+        """Approve the testimonial with optimized update."""
         self.status = TestimonialStatus.APPROVED
         self.approved_at = timezone.now()
         self.approved_by = user
         self.save(update_fields=['status', 'approved_at', 'approved_by', 'updated_at'])
         
-        # Log the action
         from ..utils import log_testimonial_action
         log_testimonial_action(self, "approve", user)
     
     def reject(self, reason=None, user=None):
-        """
-        Reject the testimonial with optimized update.
-        """
+        """Reject the testimonial with optimized update."""
         update_fields = ['status', 'updated_at']
         
         self.status = TestimonialStatus.REJECTED
@@ -538,50 +500,37 @@ class Testimonial(BaseModel):
         
         self.save(update_fields=update_fields)
         
-        # Log the action
         from ..utils import log_testimonial_action
         log_testimonial_action(self, "reject", user, notes=reason)
     
     def feature(self, user=None):
-        """
-        Feature the testimonial with optimized update.
-        """
+        """Feature the testimonial with optimized update."""
         self.status = TestimonialStatus.FEATURED
         self.save(update_fields=['status', 'updated_at'])
         
-        # Log the action
         from ..utils import log_testimonial_action
         log_testimonial_action(self, "feature", user)
     
     def archive(self, user=None):
-        """
-        Archive the testimonial with optimized update.
-        """
+        """Archive the testimonial with optimized update."""
         self.status = TestimonialStatus.ARCHIVED
         self.save(update_fields=['status', 'updated_at'])
         
-        # Log the action
         from ..utils import log_testimonial_action
         log_testimonial_action(self, "archive", user)
     
     def add_response(self, response_text, user=None):
-        """
-        Add a response to the testimonial with optimized update.
-        """
-        
+        """Add a response to the testimonial with optimized update."""
         self.response = response_text
         self.response_at = timezone.now()
         self.response_by = user
         self.save(update_fields=['response', 'response_at', 'response_by', 'updated_at'])
         
-        # Log the action
         from ..utils import log_testimonial_action
         log_testimonial_action(self, "add_response", user)
     
     def add_media(self, file_obj, title=None, description=None):
-        """
-        Add media to the testimonial with optimized creation.
-        """
+        """Add media to the testimonial with optimized creation."""
         media_type = get_file_type(file_obj)
         
         return TestimonialMedia.objects.create(
@@ -604,13 +553,13 @@ class TestimonialMedia(BaseModel):
         on_delete=models.CASCADE,
         related_name='media',
         verbose_name=_("Testimonial"),
-        db_index=True,  # Index for testimonial-based queries
+        db_index=True,
         help_text=_("The testimonial this media file is attached to. "
                     "Deleting the testimonial will also delete its media files.")
     )
     file = models.FileField(
         upload_to=generate_upload_path,
-        validators=[create_file_size_validator(file_type="media file")],  # Uses MAX_FILE_SIZE
+        validators=[create_file_size_validator(file_type="media file")],
         verbose_name=_("File"),
         help_text=_("Upload the media file.")
     )
@@ -619,7 +568,7 @@ class TestimonialMedia(BaseModel):
         choices=TestimonialMediaType.choices,
         default=TestimonialMediaType.IMAGE,
         verbose_name=_("Media Type"),
-        db_index=True,  # Index for media type filtering
+        db_index=True,
         help_text=_("Type of media (e.g., image, video, document).")
     )
     title = models.CharField(
@@ -636,18 +585,17 @@ class TestimonialMedia(BaseModel):
     is_primary = models.BooleanField(
         default=False,
         verbose_name=_("Is Primary"),
-        db_index=True,  # Index for primary media queries
+        db_index=True,
         help_text=_("Mark this as the primary or featured media for the testimonial.")
     )
     order = models.PositiveIntegerField(
         default=0,
         verbose_name=_("Order"),
-        db_index=True,  # Index for ordering
+        db_index=True,
         help_text=_("Display order of the media files. "
                     "Lower numbers are shown first.")
     )
     
-    # Extra data for thumbnails, metadata, etc.
     extra_data = models.JSONField(
         blank=True,
         null=True,
@@ -665,10 +613,10 @@ class TestimonialMedia(BaseModel):
         ordering = ['-is_primary', 'order', '-created_at']
         
         indexes = [
-            Index(fields=['testimonial', 'is_primary']),  # Primary media for testimonial
-            Index(fields=['media_type']),                 # Media type filtering
-            Index(fields=['is_primary', 'order']),        # Ordering media
-            Index(fields=['testimonial', 'media_type']),  # Testimonial media by type
+            Index(fields=['testimonial', 'is_primary']),
+            Index(fields=['media_type']),
+            Index(fields=['is_primary', 'order']),
+            Index(fields=['testimonial', 'media_type']),
         ]
     
     def __str__(self):
@@ -679,33 +627,25 @@ class TestimonialMedia(BaseModel):
         super().clean()
         
         if self.file and not self.media_type:
-            # Auto-detect media type if not specified
             self.media_type = get_file_type(self.file)
     
     def save(self, *args, **kwargs):
         """Save with auto-detection of media type."""
         
-        # Auto-detect media type if not specified or if it's still the default
         if self.file:
-            # Always detect from file, even if media_type was set
-            # This ensures correct type regardless of what was passed
             try:
                 detected_type = get_file_type(self.file)
                 self.media_type = detected_type
             except Exception as e:
-                # If detection fails, log it but keep existing value
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Failed to detect media type for {self.file.name}: {e}")
-                # Keep the default or existing media_type
 
-        # Optimize text field processing
         if self.title is not None:
             self.title = self.title.strip()
         if self.description is not None:
             self.description = self.description.strip()
 
-        # Handle primary media efficiently
         if self.is_primary and self.testimonial_id:
             TestimonialMedia.objects.filter(
                 testimonial_id=self.testimonial_id
@@ -713,7 +653,6 @@ class TestimonialMedia(BaseModel):
 
         super().save(*args, **kwargs)
         
-        # Invalidate cache after save
         if app_settings.USE_REDIS_CACHE:
             invalidate_testimonial_cache(testimonial_id=self.testimonial_id)
 
@@ -722,6 +661,5 @@ class TestimonialMedia(BaseModel):
         testimonial_id = self.testimonial_id
         super().delete(*args, **kwargs)
         
-        # Invalidate cache after deletion
         if app_settings.USE_REDIS_CACHE:
             invalidate_testimonial_cache(testimonial_id=testimonial_id)

@@ -99,10 +99,13 @@
       </fieldset>
       
       <div class="submit-row" style="background: #f8f9fa; border-top: 1px solid #ddd; padding: 15px; margin-top: 20px; text-align: right;">
+        {# Hidden fields to preserve the action #}
         <input type="hidden" name="action" value="reject_testimonials" />
         <input type="hidden" name="apply" value="yes" />
-        {% for obj in queryset %}
-        <input type="hidden" name="{{ action_checkbox_name }}" value="{{ obj.pk }}" />
+        
+        {# CRITICAL: Pass the selected testimonial IDs #}
+        {% for id in selected_items %}
+        <input type="hidden" name="{{ action_checkbox_name }}" value="{{ id }}" />
         {% endfor %}
         
         <a href="{% url opts|admin_urlname:'changelist' %}" class="button cancel-link" 
@@ -111,8 +114,7 @@
         </a>
         
         <input type="submit" class="default" value="{% trans 'Confirm Rejection' %}" 
-               style="padding: 10px 20px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;"
-               onclick="return confirmRejection();" />
+               style="padding: 10px 20px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;" />
       </div>
     </div>
   </form>
@@ -122,10 +124,10 @@
 (function() {
     'use strict';
     
-    // ✅ FIX: Pre-render all Django template variables BEFORE JavaScript
+    // Pre-render template variables
     var TESTIMONIAL_COUNT = parseInt('{{ queryset|length }}', 10);
     
-    // ✅ FIX: Pre-translate all strings
+    // Pre-translate strings
     var TRANSLATIONS = {
         provideReason: '{% trans "Please provide a rejection reason." %}',
         detailedReason: '{% trans "Please provide a more detailed rejection reason (at least 10 characters)." %}',
@@ -137,40 +139,7 @@
         cancelConfirm: '{% trans "Are you sure you want to cancel? Any entered rejection reason will be lost." %}'
     };
     
-    // ✅ FIX: Define function in global scope for onclick handler
-    window.confirmRejection = function() {
-        var reasonField = document.getElementById('id_rejection_reason');
-        if (!reasonField) {
-            return false;
-        }
-        
-        var reason = reasonField.value.trim();
-        
-        if (!reason) {
-            alert(TRANSLATIONS.provideReason);
-            reasonField.focus();
-            return false;
-        }
-        
-        if (reason.length < 10) {
-            alert(TRANSLATIONS.detailedReason);
-            reasonField.focus();
-            return false;
-        }
-        
-        var reasonPreview = reason.substring(0, 100);
-        if (reason.length > 100) {
-            reasonPreview += '...';
-        }
-        
-        var confirmMessage = TRANSLATIONS.areYouSure + ' ' + TESTIMONIAL_COUNT + ' ' + TRANSLATIONS.testimonials + '\n\n' +
-                            TRANSLATIONS.rejectionReason + ' ' + reasonPreview + '\n\n' +
-                            TRANSLATIONS.cannotUndo;
-        
-        return confirm(confirmMessage);
-    };
-    
-    // Prevent accidental navigation away
+    // Form submission validation
     document.addEventListener('DOMContentLoaded', function() {
         var form = document.querySelector('.bulk-action-form');
         var textarea = document.getElementById('id_rejection_reason');
@@ -180,10 +149,49 @@
             return;
         }
         
+        // Track if user has entered text
         textarea.addEventListener('input', function() {
             isDirty = true;
         });
         
+        // Validate on form submit
+        form.addEventListener('submit', function(e) {
+            var reason = textarea.value.trim();
+            
+            if (!reason) {
+                e.preventDefault();
+                alert(TRANSLATIONS.provideReason);
+                textarea.focus();
+                return false;
+            }
+            
+            if (reason.length < 10) {
+                e.preventDefault();
+                alert(TRANSLATIONS.detailedReason);
+                textarea.focus();
+                return false;
+            }
+            
+            // Final confirmation
+            var reasonPreview = reason.substring(0, 100);
+            if (reason.length > 100) {
+                reasonPreview += '...';
+            }
+            
+            var confirmMessage = TRANSLATIONS.areYouSure + ' ' + TESTIMONIAL_COUNT + ' ' + TRANSLATIONS.testimonials + '\n\n' +
+                                TRANSLATIONS.rejectionReason + ' ' + reasonPreview + '\n\n' +
+                                TRANSLATIONS.cannotUndo;
+            
+            if (!confirm(confirmMessage)) {
+                e.preventDefault();
+                return false;
+            }
+            
+            // Clear dirty flag on successful submit
+            isDirty = false;
+        });
+        
+        // Warn before navigating away
         window.addEventListener('beforeunload', function(e) {
             if (isDirty && textarea.value.trim()) {
                 e.preventDefault();
@@ -192,10 +200,7 @@
             }
         });
         
-        form.addEventListener('submit', function() {
-            isDirty = false;
-        });
-        
+        // Warn on cancel link
         var cancelLink = document.querySelector('.cancel-link');
         if (cancelLink) {
             cancelLink.addEventListener('click', function(e) {

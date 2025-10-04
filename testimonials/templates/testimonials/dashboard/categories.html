@@ -1,0 +1,117 @@
+{% extends "testimonials/dashboard/base.html" %}
+{% load i18n %}
+
+{% block page_description %}
+{% trans "Manage and analyze testimonial categories" %}
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">{% trans "Categories" %} ({{ total_categories }})</h3>
+        <div class="card-actions">
+            <a href="{% url 'admin:testimonials_testimonialcategory_add' %}" class="btn btn-primary">
+                ➕ {% trans "Add Category" %}
+            </a>
+            <a href="{% url 'admin:testimonials_testimonialcategory_changelist' %}" class="btn btn-secondary">
+                {% trans "Manage in Admin" %}
+            </a>
+        </div>
+    </div>
+    
+    {% if categories %}
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>{% trans "Category" %}</th>
+                    <th>{% trans "Total" %}</th>
+                    <th>{% trans "Pending" %}</th>
+                    <th>{% trans "Approved" %}</th>
+                    <th>{% trans "Avg Rating" %}</th>
+                    <th>{% trans "Status" %}</th>
+                    <th>{% trans "Actions" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for category in categories %}
+                <tr>
+                    <td>
+                        <div style="font-weight: 600; margin-bottom: 0.25rem;">{{ category.name }}</div>
+                        {% if category.description %}
+                            <div style="font-size: 0.875rem; color: #718096;">{{ category.description|truncatechars:60 }}</div>
+                        {% endif %}
+                    </td>
+                    <td style="font-weight: 500;">{{ category.total }}</td>
+                    <td>
+                        {% if category.pending > 0 %}
+                            <span style="color: #d97706; font-weight: 500;">{{ category.pending }}</span>
+                        {% else %}
+                            <span style="color: #718096;">0</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span style="color: #059669; font-weight: 500;">{{ category.approved }}</span>
+                    </td>
+                    <td>
+                        {% if category.avg_rating %}
+                            <span class="rating-stars">{{ category.avg_rating|floatformat:1 }} ★</span>
+                        {% else %}
+                            <span style="color: #718096;">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if category.is_active %}
+                            <span class="badge badge-approved">{% trans "Active" %}</span>
+                        {% else %}
+                            <span class="badge badge-rejected">{% trans "Inactive" %}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'admin:testimonials_testimonialcategory_change' category.pk %}" class="btn btn-secondary" style="font-size: 0.875rem; padding: 0.375rem 0.75rem;">
+                            {% trans "Edit" %}
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div style="padding: 3rem; text-align: center;">
+        <div style="font-size: 4rem; margin-bottom: 1rem;">🏷️</div>
+        <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem;">{% trans "No categories yet" %}</h3>
+        <p style="color: #718096; margin-bottom: 1.5rem;">{% trans "Create your first category to organize testimonials" %}</p>
+        <a href="{% url 'admin:testimonials_testimonialcategory_add' %}" class="btn btn-primary">
+            ➕ {% trans "Create First Category" %}
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Category Performance -->
+{% if categories %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">{% trans "Category Performance" %}</h3>
+    </div>
+    <div style="padding: 1.5rem;">
+        {% for category in categories|slice:":5" %}
+        <div style="margin-bottom: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                <span style="font-weight: 500;">{{ category.name }}</span>
+                <span style="color: #718096;">
+                    {{ category.approved }} / {{ category.total }} {% trans "approved" %}
+                    ({% widthratio category.approved category.total 100 %}%)
+                </span>
+            </div>
+            <div style="height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden;">
+                <div style="height: 100%; width: {% widthratio category.approved category.total 100 %}%; background: #10b981;"></div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,4 +1,4 @@
-# testimonials/tasks.py - COMPLETE REPLACEMENT
+# testimonials/tasks.py - UPDATED WITH THUMBNAIL GENERATION
 
 """
 Celery tasks for the testimonials app.
@@ -24,21 +24,18 @@ try:
 except ImportError:
     CELERY_AVAILABLE = False
     # When Celery is not available, create a decorator that removes the bind parameter
-    # and makes functions work without self
     def shared_task(*args, **kwargs):
         def decorator(func):
-            # Remove bind parameter from kwargs since we're not using Celery
             kwargs.pop('bind', None)
             kwargs.pop('max_retries', None)
             kwargs.pop('default_retry_delay', None)
             return func
-        # Handle both @shared_task and @shared_task() syntax
         if len(args) == 1 and callable(args[0]):
             return args[0]
         return decorator
 
 
-# === EMAIL TASKS ===
+# === EMAIL TASKS === (keeping existing email implementation)
 
 if CELERY_AVAILABLE:
     @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -59,17 +56,7 @@ else:
 
 def _send_testimonial_notification_email_impl(self, testimonial_id: str, email_type: str, 
                                               recipient_email: str, context_data: Dict[str, Any] = None):
-    """
-    Implementation of send_testimonial_notification_email.
-    
-    Args:
-        self: Celery task instance (or None if not using Celery)
-        testimonial_id: ID of the testimonial
-        email_type: Type of email (approved, rejected, response, new)
-        recipient_email: Email address to send to
-        context_data: Additional context for email template
-    """
-    # Check if email notifications are enabled
+    """Implementation of send_testimonial_notification_email."""
     if not app_settings.SEND_EMAIL_NOTIFICATIONS:
         logger.info(f"Email notifications disabled. Skipping {email_type} email for testimonial {testimonial_id}")
         return
@@ -79,18 +66,15 @@ def _send_testimonial_notification_email_impl(self, testimonial_id: str, email_t
         
         testimonial = Testimonial.objects.select_related('category', 'author').get(id=testimonial_id)
         
-        # Default context
         context = {
             'testimonial': testimonial,
             'site_name': getattr(settings, 'SITE_NAME', 'Django Testimonials'),
             'site_url': getattr(settings, 'SITE_URL', ''),
         }
         
-        # Add custom context data
         if context_data:
             context.update(context_data)
         
-        # Email templates mapping
         templates = {
             'approved': {
                 'subject': 'testimonials/emails/testimonial_approved_subject.txt',
@@ -114,16 +98,13 @@ def _send_testimonial_notification_email_impl(self, testimonial_id: str, email_t
             logger.error(f"Unknown email type: {email_type}")
             return
         
-        # Render email content
         subject = render_to_string(template_config['subject'], context).strip()
         text_message = render_to_string(template_config['body_text'], context)
         
-        # Determine from email
         from_name = app_settings.EMAIL_FROM_NAME
         from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com')
         from_address = f"{from_name} <{from_email}>"
         
-        # Send HTML email if enabled
         if app_settings.USE_HTML_EMAILS:
             try:
                 html_message = render_to_string(template_config['body_html'], context)
@@ -169,7 +150,6 @@ def _send_testimonial_notification_email_impl(self, testimonial_id: str, email_t
     except Exception as exc:
         logger.error(f"Failed to send {email_type} email for testimonial {testimonial_id}: {exc}")
         
-        # Retry the task if using Celery
         if self and hasattr(self, 'request') and hasattr(self, 'retry'):
             if self.request.retries < self.max_retries:
                 raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
@@ -177,7 +157,7 @@ def _send_testimonial_notification_email_impl(self, testimonial_id: str, email_t
             logger.error(f"Final failure sending {email_type} email for testimonial {testimonial_id}")
 
 
-# === ADMIN NOTIFICATION TASKS ===
+# === ADMIN NOTIFICATION TASKS === (keeping existing implementation)
 
 if CELERY_AVAILABLE:
     @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -261,7 +241,7 @@ def _send_admin_notification_email_impl(self, testimonial_id: str, notification_
                 raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
 
 
-# === MEDIA PROCESSING TASKS ===
+# === MEDIA PROCESSING TASKS === (UPDATED WITH THUMBNAIL GENERATION)
 
 if CELERY_AVAILABLE:
     @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -275,15 +255,70 @@ else:
 
 
 def _process_testimonial_media_impl(self, media_id: str):
-    """Implementation of process_testimonial_media."""
+    """
+    Implementation of process_testimonial_media.
+    
+    ✅ NOW GENERATES THUMBNAILS FOR IMAGES!
+    """
     try:
         from .models import TestimonialMedia
+        from .constants import TestimonialMediaType
         
-        media = TestimonialMedia.objects.get(id=media_id)
+        media = TestimonialMedia.objects.select_related('testimonial').get(id=media_id)
         
-        if media.media_type == 'image':
-            generate_thumbnails(media)
-            logger.info(f"Generated thumbnails for media {media_id}")
+        # ✅ THUMBNAIL GENERATION IMPLEMENTATION
+        if media.media_type == TestimonialMediaType.IMAGE and app_settings.ENABLE_THUMBNAILS:
+            logger.info(f"Generating thumbnails for media {media_id}")
+            
+            # Generate thumbnails and store in extra_data
+            thumbnails = generate_thumbnails(media.file, app_settings.THUMBNAIL_SIZES)
+            
+            if thumbnails:
+                # Initialize extra_data if None
+                if media.extra_data is None:
+                    media.extra_data = {}
+                
+                # Store thumbnail info
+                media.extra_data['thumbnails'] = {}
+                
+                for size_name, thumbnail_file in thumbnails.items():
+                    # Save thumbnail file
+                    thumbnail_filename = f"thumb_{size_name}_{media.file.name.split('/')[-1]}"
+                    media.file.storage.save(thumbnail_filename, thumbnail_file)
+                    
+                    # Store thumbnail path in extra_data
+                    media.extra_data['thumbnails'][size_name] = thumbnail_filename
+                    
+                    logger.info(f"Generated {size_name} thumbnail for media {media_id}: {thumbnail_filename}")
+                
+                # Save media with thumbnail info
+                media.save(update_fields=['extra_data'])
+                
+                logger.info(f"Successfully generated {len(thumbnails)} thumbnails for media {media_id}")
+            else:
+                logger.warning(f"No thumbnails generated for media {media_id}")
+        
+        elif media.media_type == TestimonialMediaType.VIDEO:
+            logger.info(f"Video processing for media {media_id} - placeholder for future implementation")
+            # Future: Add video thumbnail extraction here
+            
+        elif media.media_type == TestimonialMediaType.AUDIO:
+            logger.info(f"Audio processing for media {media_id} - placeholder for future implementation")
+            # Future: Add audio waveform generation here
+        
+        # Log successful processing
+        log_testimonial_action(
+            media.testimonial,
+            "media_processed",
+            extra_data={
+                'media_id': str(media_id),
+                'media_type': media.media_type,
+                'thumbnails_generated': bool(media.extra_data and 'thumbnails' in media.extra_data)
+            }
+        )
+        
+        # Invalidate cache
+        invalidate_testimonial_cache(testimonial_id=media.testimonial_id)
         
     except Exception as exc:
         logger.error(f"Failed to process media {media_id}: {exc}")
@@ -293,7 +328,7 @@ def _process_testimonial_media_impl(self, media_id: str):
                 raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
 
 
-# === BULK OPERATIONS TASKS ===
+# === BULK OPERATIONS TASKS === (keeping existing implementation)
 
 if CELERY_AVAILABLE:
     @shared_task(bind=True, max_retries=2, default_retry_delay=120)
@@ -310,19 +345,7 @@ else:
 
 def _bulk_moderate_testimonials_impl(self, testimonial_ids: list, action: str, user_id: int = None, 
                                     extra_data: Dict[str, Any] = None):
-    """
-    Implementation of bulk_moderate_testimonials.
-    
-    Args:
-        self: Celery task instance (or None if not using Celery)
-        testimonial_ids: List of testimonial IDs to process
-        action: Action to perform (approve, reject, feature, archive, verify, unverify)
-        user_id: ID of user performing the action
-        extra_data: Additional data (e.g., rejection_reason)
-    
-    Returns:
-        dict: Result of the bulk operation
-    """
+    """Implementation of bulk_moderate_testimonials."""
     try:
         from .models import Testimonial
         from .constants import TestimonialStatus
@@ -343,7 +366,6 @@ def _bulk_moderate_testimonials_impl(self, testimonial_ids: list, action: str, u
                         testimonial.approved_at = timezone.now()
                     testimonial.save()
                     updated_count += 1
-                    # ✅ Email will be sent automatically by pre_save signal in signals.py
             
             elif action == 'reject':
                 if testimonial.status != TestimonialStatus.REJECTED:
@@ -354,7 +376,6 @@ def _bulk_moderate_testimonials_impl(self, testimonial_ids: list, action: str, u
                         testimonial.rejection_reason = "Bulk rejection"
                     testimonial.save()
                     updated_count += 1
-                    # ✅ Email will be sent automatically by pre_save signal in signals.py
             
             elif action == 'feature':
                 if testimonial.status != TestimonialStatus.FEATURED:
@@ -383,7 +404,7 @@ def _bulk_moderate_testimonials_impl(self, testimonial_ids: list, action: str, u
         # Log bulk action
         if updated_count > 0:
             log_testimonial_action(
-                None,  # No specific testimonial for bulk actions
+                None,
                 f"bulk_{action}",
                 user,
                 f"Bulk {action}: {updated_count}/{len(testimonials)} testimonials updated",
@@ -410,7 +431,6 @@ def _bulk_moderate_testimonials_impl(self, testimonial_ids: list, action: str, u
     except Exception as exc:
         logger.error(f"Bulk moderation failed for action '{action}': {exc}")
         
-        # Retry the task if using Celery
         if self and hasattr(self, 'request') and hasattr(self, 'retry'):
             if self.request.retries < self.max_retries:
                 raise self.retry(exc=exc, countdown=120 * (2 ** self.request.retries))
@@ -500,9 +520,7 @@ if CELERY_AVAILABLE:
 
 def send_testimonial_email(testimonial_id: str, email_type: str, 
                           recipient_email: str, context_data: Dict[str, Any] = None):
-    """
-    Wrapper to send testimonial emails (async if Celery enabled, sync otherwise).
-    """
+    """Wrapper to send testimonial emails (async if Celery enabled, sync otherwise)."""
     if app_settings.USE_CELERY and CELERY_AVAILABLE:
         return send_testimonial_notification_email.delay(
             testimonial_id, email_type, recipient_email, context_data

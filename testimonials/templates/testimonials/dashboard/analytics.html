@@ -1,0 +1,182 @@
+{% extends "testimonials/dashboard/base.html" %}
+{% load i18n %}
+
+{% block page_description %}
+{% trans "Detailed analytics and insights about your testimonials" %}
+{% endblock %}
+
+{% block content %}
+<!-- Overview Stats -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div>
+                <div class="stat-card-title">{% trans "Total Testimonials" %}</div>
+            </div>
+            <div class="stat-card-icon" style="background: #ebf8ff; color: #3182ce;">📊</div>
+        </div>
+        <div class="stat-card-value">{{ testimonial_stats.total }}</div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div>
+                <div class="stat-card-title">{% trans "Average Rating" %}</div>
+            </div>
+            <div class="stat-card-icon" style="background: #fef3c7; color: #d97706;">⭐</div>
+        </div>
+        <div class="stat-card-value">{{ testimonial_stats.average_rating }}</div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div>
+                <div class="stat-card-title">{% trans "Total Media Files" %}</div>
+            </div>
+            <div class="stat-card-icon" style="background: #fce7f3; color: #9f1239;">🖼️</div>
+        </div>
+        <div class="stat-card-value">{{ media_stats.total_media }}</div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div>
+                <div class="stat-card-title">{% trans "Verified" %}</div>
+            </div>
+            <div class="stat-card-icon" style="background: #d1fae5; color: #065f46;">✓</div>
+        </div>
+        <div class="stat-card-value">{{ testimonial_stats.total_verified }}</div>
+        <div class="stat-card-change">{{ testimonial_stats.quality_metrics.verified_percentage }}%</div>
+    </div>
+</div>
+
+<!-- Quality Metrics -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">{% trans "Quality Metrics" %}</h3>
+    </div>
+    <div style="padding: 1.5rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;">
+            <div>
+                <div style="font-size: 0.875rem; color: #718096; margin-bottom: 0.5rem;">{% trans "High Rating Percentage" %}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{{ testimonial_stats.quality_metrics.high_rating_percentage }}%</div>
+                <div style="height: 4px; background: #e2e8f0; border-radius: 2px; margin-top: 0.5rem;">
+                    <div style="height: 100%; width: {{ testimonial_stats.quality_metrics.high_rating_percentage }}%; background: #10b981; border-radius: 2px;"></div>
+                </div>
+            </div>
+            
+            <div>
+                <div style="font-size: 0.875rem; color: #718096; margin-bottom: 0.5rem;">{% trans "Approval Rate" %}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{{ testimonial_stats.quality_metrics.approval_rate }}%</div>
+                <div style="height: 4px; background: #e2e8f0; border-radius: 2px; margin-top: 0.5rem;">
+                    <div style="height: 100%; width: {{ testimonial_stats.quality_metrics.approval_rate }}%; background: #3b82f6; border-radius: 2px;"></div>
+                </div>
+            </div>
+            
+            <div>
+                <div style="font-size: 0.875rem; color: #718096; margin-bottom: 0.5rem;">{% trans "Media Attachment Rate" %}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{{ testimonial_stats.quality_metrics.media_attachment_rate }}%</div>
+                <div style="height: 4px; background: #e2e8f0; border-radius: 2px; margin-top: 0.5rem;">
+                    <div style="height: 100%; width: {{ testimonial_stats.quality_metrics.media_attachment_rate }}%; background: #8b5cf6; border-radius: 2px;"></div>
+                </div>
+            </div>
+            
+            <div>
+                <div style="font-size: 0.875rem; color: #718096; margin-bottom: 0.5rem;">{% trans "Response Rate" %}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{{ testimonial_stats.response_stats.response_rate }}%</div>
+                <div style="height: 4px; background: #e2e8f0; border-radius: 2px; margin-top: 0.5rem;">
+                    <div style="height: 100%; width: {{ testimonial_stats.response_stats.response_rate }}%; background: #f59e0b; border-radius: 2px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Time-Based Analytics -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">{% trans "Activity Over Time" %}</h3>
+    </div>
+    <div style="padding: 1.5rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="background: #f7fafc; padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.875rem; color: #718096;">{% trans "Last 24 Hours" %}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{{ testimonial_stats.time_based.last_24_hours.total }}</div>
+            </div>
+            <div style="background: #f7fafc; padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.875rem; color: #718096;">{% trans "Last 7 Days" %}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{{ testimonial_stats.time_based.last_7_days.total }}</div>
+            </div>
+            <div style="background: #f7fafc; padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.875rem; color: #718096;">{% trans "Last 30 Days" %}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{{ testimonial_stats.time_based.last_30_days.total }}</div>
+            </div>
+            <div style="background: #f7fafc; padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.875rem; color: #718096;">{% trans "Last Year" %}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{{ testimonial_stats.time_based.last_year.total }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Companies -->
+{% if testimonial_stats.top_companies %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">{% trans "Top Companies" %}</h3>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>{% trans "Company" %}</th>
+                    <th>{% trans "Testimonials" %}</th>
+                    <th>{% trans "Verified" %}</th>
+                    <th>{% trans "Avg Rating" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for company in testimonial_stats.top_companies %}
+                <tr>
+                    <td style="font-weight: 500;">{{ company.company }}</td>
+                    <td>{{ company.count }}</td>
+                    <td>{{ company.verified_count }}</td>
+                    <td>
+                        <span class="rating-stars">{{ company.avg_rating|floatformat:1 }} ★</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Media Statistics -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">{% trans "Media Statistics" %}</h3>
+    </div>
+    <div style="padding: 1.5rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div style="background: #f7fafc; padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.875rem; color: #718096;">{% trans "Images" %}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{{ media_stats.total_images }}</div>
+            </div>
+            <div style="background: #f7fafc; padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.875rem; color: #718096;">{% trans "Videos" %}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{{ media_stats.total_videos }}</div>
+            </div>
+            <div style="background: #f7fafc; padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.875rem; color: #718096;">{% trans "Total Storage" %}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{{ media_stats.size_stats.total_size_mb|floatformat:1 }} MB</div>
+            </div>
+            <div style="background: #f7fafc; padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.875rem; color: #718096;">{% trans "Avg File Size" %}</div>
+                <div style="font-size: 1.5rem; font-weight: 600;">{{ media_stats.size_stats.average_size_mb|floatformat:2 }} MB</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

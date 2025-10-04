@@ -1,0 +1,102 @@
+{% extends "testimonials/dashboard/base.html" %}
+{% load i18n %}
+
+{% block page_description %}
+{% trans "Review and moderate pending testimonials" %}
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">{% trans "Pending Testimonials" %} ({{ pending_count }})</h3>
+        <div class="card-actions">
+            <a href="{% url 'admin:testimonials_testimonial_changelist' %}?status__exact=pending" class="btn btn-secondary">
+                {% trans "View in Admin" %}
+            </a>
+        </div>
+    </div>
+    
+    {% if pending_testimonials %}
+    <div style="padding: 1.5rem;">
+        {% for testimonial in pending_testimonials %}
+        <div class="testimonial-review-card" style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
+                <div style="flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;">
+                        <h4 style="font-size: 1.125rem; font-weight: 600; margin: 0;">{{ testimonial.author_name }}</h4>
+                        <span class="rating-stars" style="font-size: 1.25rem;">
+                            {% for i in "12345"|make_list %}
+                                {% if forloop.counter <= testimonial.rating %}★{% else %}☆{% endif %}
+                            {% endfor %}
+                        </span>
+                    </div>
+                    <div style="font-size: 0.875rem; color: #718096;">
+                        {% if testimonial.company %}{{ testimonial.company }} • {% endif %}
+                        {% if testimonial.category %}{{ testimonial.category.name }} • {% endif %}
+                        {{ testimonial.created_at|date:"M d, Y H:i" }}
+                    </div>
+                </div>
+                <span class="badge badge-pending">{% trans "Pending" %}</span>
+            </div>
+            
+            <div style="background: #f7fafc; padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
+                <p style="margin: 0; line-height: 1.6;">{{ testimonial.content }}</p>
+            </div>
+            
+            {% if testimonial.author_email or testimonial.author_phone or testimonial.location %}
+            <div style="display: flex; gap: 1.5rem; margin-bottom: 1rem; font-size: 0.875rem; color: #718096;">
+                {% if testimonial.author_email %}
+                    <div>📧 {{ testimonial.author_email }}</div>
+                {% endif %}
+                {% if testimonial.author_phone %}
+                    <div>📱 {{ testimonial.author_phone }}</div>
+                {% endif %}
+                {% if testimonial.location %}
+                    <div>📍 {{ testimonial.location }}</div>
+                {% endif %}
+            </div>
+            {% endif %}
+            
+            <div style="display: flex; gap: 0.75rem; padding-top: 1rem; border-top: 1px solid #e2e8f0;">
+                <a href="{% url 'admin:testimonials_testimonial_change' testimonial.pk %}" class="btn btn-primary">
+                    {% trans "Review & Edit" %}
+                </a>
+                <button onclick="quickApprove({{ testimonial.pk }})" class="btn" style="background: #d1fae5; color: #065f46;">
+                    ✅ {% trans "Quick Approve" %}
+                </button>
+                <button onclick="quickReject({{ testimonial.pk}})" class="btn" style="background: #fee2e2; color: #991b1b;">
+                    ❌ {% trans "Quick Reject" %}
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="padding: 3rem; text-align: center;">
+        <div style="font-size: 4rem; margin-bottom: 1rem;">🎉</div>
+        <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem;">{% trans "All caught up!" %}</h3>
+        <p style="color: #718096;">{% trans "There are no pending testimonials to review." %}</p>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function quickApprove(testimonialId) {
+    if (confirm('{% trans "Are you sure you want to approve this testimonial?" %}')) {
+        // Redirect to admin change page with status preset
+        window.location.href = `/admin/testimonials/testimonial/${testimonialId}/change/?status=approved`;
+    }
+}
+
+function quickReject(testimonialId) {
+    const reason = prompt('{% trans "Please provide a reason for rejection:" %}');
+    if (reason) {
+        // Redirect to admin change page with status preset
+        window.location.href = `/admin/testimonials/testimonial/${testimonialId}/change/?status=rejected&reason=${encodeURIComponent(reason)}`;
+    }
+}
+</script>
+{% endblock %}

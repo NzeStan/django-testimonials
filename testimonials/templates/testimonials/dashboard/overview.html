@@ -1,0 +1,274 @@
+{% extends "testimonials/dashboard/base.html" %}
+{% load i18n %}
+
+{% block page_description %}
+{% trans "Monitor key metrics and recent testimonial activity" %}
+{% endblock %}
+
+{% block content %}
+<!-- Stats Cards -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div>
+                <div class="stat-card-title">{% trans "Total Testimonials" %}</div>
+            </div>
+            <div class="stat-card-icon" style="background: #ebf8ff; color: #3182ce;">
+                📝
+            </div>
+        </div>
+        <div class="stat-card-value">{{ total_testimonials|default:0 }}</div>
+        <div class="stat-card-change">+{{ today_count }} {% trans "today" %}</div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div>
+                <div class="stat-card-title">{% trans "Pending Review" %}</div>
+            </div>
+            <div class="stat-card-icon" style="background: #fef3c7; color: #92400e;">
+                ⏳
+            </div>
+        </div>
+        <div class="stat-card-value">{{ pending_count|default:0 }}</div>
+        <a href="{% url 'testimonials:dashboard:moderation' %}" class="stat-card-change" style="text-decoration: none;">{% trans "Review now →" %}</a>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div>
+                <div class="stat-card-title">{% trans "Approved" %}</div>
+            </div>
+            <div class="stat-card-icon" style="background: #d1fae5; color: #065f46;">
+                ✅
+            </div>
+        </div>
+        <div class="stat-card-value">{{ approved_count|default:0 }}</div>
+        <div class="stat-card-change">+{{ featured_count }} {% trans "featured" %}</div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div>
+                <div class="stat-card-title">{% trans "Average Rating" %}</div>
+            </div>
+            <div class="stat-card-icon" style="background: #fef3c7; color: #d97706;">
+                ⭐
+            </div>
+        </div>
+        <div class="stat-card-value">{{ avg_rating|floatformat:1 }}</div>
+        <div class="stat-card-change rating-stars">★★★★★</div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
+    <!-- Status Distribution -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">{% trans "Status Distribution" %}</h3>
+        </div>
+        <div style="padding: 1rem;">
+            {% for item in status_distribution %}
+            <div style="margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                    <span style="font-weight: 500;">{{ item.label }}</span>
+                    <span style="color: #718096;">{{ item.count }} ({{ item.percentage }}%)</span>
+                </div>
+                <div style="height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden;">
+                    <div style="height: 100%; width: {{ item.percentage }}%; 
+                                background: {% if item.label == 'Pending' %}#fbbf24
+                                {% elif item.label == 'Approved' %}#10b981
+                                {% elif item.label == 'Featured' %}#3b82f6
+                                {% elif item.label == 'Rejected' %}#ef4444
+                                {% else %}#6b7280{% endif %};"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <!-- Rating Distribution -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">{% trans "Rating Distribution" %}</h3>
+        </div>
+        <div style="padding: 1rem;">
+            {% for item in rating_distribution %}
+            <div style="margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                    <span style="font-weight: 500;">
+                        {% for i in "12345"|make_list %}
+                            {% if forloop.counter <= item.rating %}★{% else %}☆{% endif %}
+                        {% endfor %}
+                    </span>
+                    <span style="color: #718096;">{{ item.count }} ({{ item.percentage }}%)</span>
+                </div>
+                <div style="height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden;">
+                    <div style="height: 100%; width: {{ item.percentage }}%; background: #fbbf24;"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Top Categories -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">{% trans "Top Categories" %}</h3>
+        <a href="{% url 'testimonials:dashboard:categories' %}" class="btn btn-secondary">{% trans "View All" %}</a>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>{% trans "Category" %}</th>
+                    <th>{% trans "Total" %}</th>
+                    <th>{% trans "Approved" %}</th>
+                    <th>{% trans "Avg Rating" %}</th>
+                    <th>{% trans "Status" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for category in top_categories %}
+                <tr>
+                    <td style="font-weight: 500;">{{ category.name }}</td>
+                    <td>{{ category.total }}</td>
+                    <td>{{ category.approved }}</td>
+                    <td>
+                        <span class="rating-stars">
+                            {% if category.avg_rating %}
+                                {{ category.avg_rating|floatformat:1 }} ★
+                            {% else %}
+                                {% trans "N/A" %}
+                            {% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        {% if category.is_active %}
+                            <span class="badge badge-approved">{% trans "Active" %}</span>
+                        {% else %}
+                            <span class="badge badge-rejected">{% trans "Inactive" %}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" style="text-align: center; color: #718096;">{% trans "No categories yet" %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Recent Testimonials -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">{% trans "Recent Testimonials" %}</h3>
+        <a href="{% url 'admin:testimonials_testimonial_changelist' %}" class="btn btn-secondary">{% trans "View All" %}</a>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>{% trans "Author" %}</th>
+                    <th>{% trans "Content" %}</th>
+                    <th>{% trans "Rating" %}</th>
+                    <th>{% trans "Category" %}</th>
+                    <th>{% trans "Status" %}</th>
+                    <th>{% trans "Date" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for testimonial in recent_testimonials %}
+                <tr>
+                    <td>
+                        <div style="font-weight: 500;">{{ testimonial.author_name }}</div>
+                        {% if testimonial.company %}
+                            <div style="font-size: 0.875rem; color: #718096;">{{ testimonial.company }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            {{ testimonial.content|truncatechars:80 }}
+                        </div>
+                    </td>
+                    <td>
+                        <span class="rating-stars">
+                            {% for i in "12345"|make_list %}
+                                {% if forloop.counter <= testimonial.rating %}★{% else %}☆{% endif %}
+                            {% endfor %}
+                        </span>
+                    </td>
+                    <td>{{ testimonial.category.name|default:"—" }}</td>
+                    <td>
+                        <span class="badge badge-{{ testimonial.status }}">{{ testimonial.get_status_display }}</span>
+                    </td>
+                    <td style="white-space: nowrap;">{{ testimonial.created_at|date:"M d, Y" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" style="text-align: center; color: #718096;">{% trans "No testimonials yet" %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Pending Testimonials -->
+{% if pending_testimonials %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">{% trans "Pending Review" %}</h3>
+        <a href="{% url 'testimonials:dashboard:moderation' %}" class="btn btn-primary">{% trans "Review All" %}</a>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>{% trans "Author" %}</th>
+                    <th>{% trans "Content" %}</th>
+                    <th>{% trans "Rating" %}</th>
+                    <th>{% trans "Date" %}</th>
+                    <th>{% trans "Actions" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for testimonial in pending_testimonials %}
+                <tr>
+                    <td>
+                        <div style="font-weight: 500;">{{ testimonial.author_name }}</div>
+                        {% if testimonial.company %}
+                            <div style="font-size: 0.875rem; color: #718096;">{{ testimonial.company }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div style="max-width: 400px;">
+                            {{ testimonial.content|truncatechars:120 }}
+                        </div>
+                    </td>
+                    <td>
+                        <span class="rating-stars">
+                            {% for i in "12345"|make_list %}
+                                {% if forloop.counter <= testimonial.rating %}★{% else %}☆{% endif %}
+                            {% endfor %}
+                        </span>
+                    </td>
+                    <td style="white-space: nowrap;">{{ testimonial.created_at|date:"M d, Y H:i" }}</td>
+                    <td>
+                        <a href="{% url 'admin:testimonials_testimonial_change' testimonial.pk %}" class="btn btn-primary" style="font-size: 0.875rem; padding: 0.375rem 0.75rem;">
+                            {% trans "Review" %}
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -69,10 +69,30 @@ class AppSettings:
     def FORBIDDEN_WORDS(self):
         """
         List of forbidden words in testimonial content.
-        Default is empty list.
+        These words will trigger validation errors if found in testimonial content.
+        Default includes common spam and test keywords.
+        
+        You can override this in settings.py:
+        TESTIMONIALS_FORBIDDEN_WORDS = ['spam', 'fake', 'your_custom_words']
         """
         return getattr(settings, "TESTIMONIALS_FORBIDDEN_WORDS", [
-            'spam', 'fake', 'bot', 'test123'
+            # Spam keywords
+            'spam', 'scam', 'fraud', 'phishing', 'viagra', 'cialis',
+            'pharmacy', 'pills', 'lottery', 'winner', 'congratulations',
+            'click here', 'buy now', 'limited time', 'act now',
+            
+            # Testing keywords
+            'test', 'testing', 'test123', 'asdf', 'qwerty',
+            'lorem ipsum', 'dummy', 'sample',
+            
+            # Fake/bot indicators
+            'fake', 'bot', 'automated', 'script', 'generated',
+            
+            # Offensive placeholder (add more as needed)
+            'xxx', 'adult content',
+            
+            # SEO spam
+            'seo', 'backlink', 'link building', 'guest post',
         ])
 
     # ====== FILE UPLOAD SETTINGS ======
@@ -149,14 +169,20 @@ class AppSettings:
         """
         User model to use for testimonial authors.
         Default is settings.AUTH_USER_MODEL.
+        
+        This setting allows you to use a custom user model throughout the testimonials app.
         """
         return getattr(settings, "TESTIMONIALS_USER_MODEL", settings.AUTH_USER_MODEL)
 
     @property
     def MODERATION_ROLES(self):
         """
-        List of roles that can moderate testimonials.
-        Default is empty list (only superusers).
+        List of group names that can moderate testimonials.
+        Users in these groups will have permission to approve, reject, and feature testimonials.
+        Default is empty list (only superusers and staff).
+        
+        Example:
+        TESTIMONIALS_MODERATION_ROLES = ['Content Manager', 'Moderator']
         """
         return getattr(settings, "TESTIMONIALS_MODERATION_ROLES", [])
 
@@ -189,7 +215,8 @@ class AppSettings:
     @property
     def ENABLE_DASHBOARD(self):
         """
-        Expose dashboard endpoint.
+        Enable the testimonials dashboard with analytics and insights.
+        When enabled, adds a dedicated admin dashboard at /testimonials/dashboard/
         Default is False.
         """
         return getattr(settings, 'TESTIMONIALS_ENABLE_DASHBOARD', False)
@@ -200,6 +227,7 @@ class AppSettings:
     def NOTIFICATION_EMAIL(self):
         """
         Email address to send testimonial notifications to.
+        This is used for admin notifications about new testimonials.
         Default is None.
         """
         return getattr(settings, "TESTIMONIALS_NOTIFICATION_EMAIL", None)
@@ -212,7 +240,7 @@ class AppSettings:
         """
         return getattr(settings, "TESTIMONIALS_EMAIL_RATE_LIMIT", 60)
     
-    # ====== EMAIL NOTIFICATION CONTROLS (NEW) ======
+    # ====== EMAIL NOTIFICATION CONTROLS ======
     
     @property
     def SEND_EMAIL_NOTIFICATIONS(self):
@@ -298,24 +326,6 @@ class AppSettings:
         """
         return getattr(settings, "TESTIMONIALS_DEFAULT_PHONE_REGION", "NG")
 
-    # ====== CUSTOM MODEL SETTINGS ======
-    
-    @property
-    def CUSTOM_MODEL(self):
-        """
-        Custom model to use instead of the default Testimonial model.
-        Default is None.
-        """
-        return getattr(settings, "TESTIMONIALS_CUSTOM_MODEL", None)
-    
-    @property
-    def TESTIMONIAL_STATUSES(self):
-        """
-        Custom statuses for testimonials.
-        Default is None (use the default statuses).
-        """
-        return getattr(settings, "TESTIMONIALS_CUSTOM_STATUSES", None)
-    
     # ====== CELERY & ASYNC SETTINGS ======
     
     @property
@@ -394,11 +404,12 @@ class AppSettings:
         """
         Thumbnail sizes to generate for images.
         Format: {'size_name': (width, height)}
-        Default creates small, medium thumbnails.
+        Default creates small, medium, and large thumbnails.
         """
         return getattr(settings, "TESTIMONIALS_THUMBNAIL_SIZES", {
             'small': (150, 150),
             'medium': (300, 300),
+            'large': (600, 600),
         })
 
 
