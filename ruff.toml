@@ -107,7 +107,7 @@ line-ending = "auto"
 
 [tool.ruff.lint.isort]
 # Django-specific isort configuration
-known-first-party = ["django_reusable_comments"]
+known-first-party = ["Django Testimonials"]
 known-django = ["django"]
 section-order = ["future", "standard-library", "django", "third-party", "first-party", "local-folder"]
 

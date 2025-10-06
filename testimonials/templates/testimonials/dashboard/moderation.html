@@ -7,9 +7,22 @@
 
 {% block content %}
 <div class="card">
-    <div class="card-header">
-        <h3 class="card-title">{% trans "Pending Testimonials" %} ({{ pending_count }})</h3>
-        <div class="card-actions">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h3 class="card-title">{% trans "Pending Testimonials" %} (<span id="pending-count">{{ pending_count }}</span>)</h3>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <div class="bulk-actions" style="display: none; gap: 0.5rem; margin-right: 1rem;">
+                <button onclick="bulkApprove()" class="btn" style="background: #d1fae5; color: #065f46;">
+                    ✅ {% trans "Approve Selected" %} (<span id="selected-count">0</span>)
+                </button>
+                <button onclick="bulkReject()" class="btn" style="background: #fee2e2; color: #991b1b;">
+                    ❌ {% trans "Reject Selected" %} (<span id="selected-count-reject">0</span>)
+                </button>
+                <button onclick="clearSelection()" class="btn btn-secondary">
+                    {% trans "Clear" %}
+                </button>
+            </div>
             <a href="{% url 'admin:testimonials_testimonial_changelist' %}?status__exact=pending" class="btn btn-secondary">
                 {% trans "View in Admin" %}
             </a>
@@ -18,8 +31,20 @@
     
     {% if pending_testimonials %}
     <div style="padding: 1.5rem;">
+        <!-- Select All Option -->
+        <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; padding: 0.5rem; background: #f7fafc; border-radius: 6px;">
+            <input type="checkbox" id="select-all" onchange="toggleSelectAll()" style="cursor: pointer;">
+            <span style="font-weight: 500;">{% trans "Select All" %}</span>
+        </label>
+
         {% for testimonial in pending_testimonials %}
-        <div class="testimonial-review-card" style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem;">
+        <div class="testimonial-review-card" data-testimonial-id="{{ testimonial.pk }}" style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem;">
+            <!-- Selection Checkbox -->
+            <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+                <input type="checkbox" class="testimonial-checkbox" data-id="{{ testimonial.pk }}" onchange="updateBulkActions()" style="cursor: pointer;">
+                <span style="font-size: 0.875rem; color: #718096;">{% trans "Select for bulk action" %}</span>
+            </label>
+
             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem;">
                 <div style="flex: 1;">
                     <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;">
@@ -61,10 +86,10 @@
                 <a href="{% url 'admin:testimonials_testimonial_change' testimonial.pk %}" class="btn btn-primary">
                     {% trans "Review & Edit" %}
                 </a>
-                <button onclick="quickApprove({{ testimonial.pk }})" class="btn" style="background: #d1fae5; color: #065f46;">
+                <button onclick="quickApprove({{ testimonial.pk }}, event)" class="btn quick-approve-btn" data-id="{{ testimonial.pk }}" style="background: #d1fae5; color: #065f46;">
                     ✅ {% trans "Quick Approve" %}
                 </button>
-                <button onclick="quickReject({{ testimonial.pk}})" class="btn" style="background: #fee2e2; color: #991b1b;">
+                <button onclick="quickReject({{ testimonial.pk }}, event)" class="btn quick-reject-btn" data-id="{{ testimonial.pk }}" style="background: #fee2e2; color: #991b1b;">
                     ❌ {% trans "Quick Reject" %}
                 </button>
             </div>
@@ -84,19 +109,420 @@
 
 {% block extra_js %}
 <script>
-function quickApprove(testimonialId) {
-    if (confirm('{% trans "Are you sure you want to approve this testimonial?" %}')) {
-        // Redirect to admin change page with status preset
-        window.location.href = `/admin/testimonials/testimonial/${testimonialId}/change/?status=approved`;
+// ✅ FIXED: Use the correct API base URL
+const API_BASE_URL = '/testimonials/api';
+
+// CSRF Token Helper
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Selection Management
+let selectedTestimonials = new Set();
+
+function updateBulkActions() {
+    const checkboxes = document.querySelectorAll('.testimonial-checkbox:checked');
+    selectedTestimonials.clear();
+    
+    checkboxes.forEach(function(cb) {
+        selectedTestimonials.add(cb.dataset.id);
+    });
+    
+    const count = selectedTestimonials.size;
+    const bulkActionsDiv = document.querySelector('.bulk-actions');
+    
+    const selectedCountEl = document.getElementById('selected-count');
+    const selectedCountRejectEl = document.getElementById('selected-count-reject');
+    
+    if (selectedCountEl) selectedCountEl.textContent = count;
+    if (selectedCountRejectEl) selectedCountRejectEl.textContent = count;
+    
+    if (count > 0) {
+        bulkActionsDiv.style.display = 'flex';
+    } else {
+        bulkActionsDiv.style.display = 'none';
     }
 }
 
-function quickReject(testimonialId) {
-    const reason = prompt('{% trans "Please provide a reason for rejection:" %}');
-    if (reason) {
-        // Redirect to admin change page with status preset
-        window.location.href = `/admin/testimonials/testimonial/${testimonialId}/change/?status=rejected&reason=${encodeURIComponent(reason)}`;
+function toggleSelectAll() {
+    const selectAllCheckbox = document.getElementById('select-all');
+    const checkboxes = document.querySelectorAll('.testimonial-checkbox');
+    
+    checkboxes.forEach(function(cb) {
+        cb.checked = selectAllCheckbox.checked;
+    });
+    
+    updateBulkActions();
+}
+
+function clearSelection() {
+    document.querySelectorAll('.testimonial-checkbox').forEach(function(cb) {
+        cb.checked = false;
+    });
+    const selectAllEl = document.getElementById('select-all');
+    if (selectAllEl) {
+        selectAllEl.checked = false;
+    }
+    selectedTestimonials.clear();
+    updateBulkActions();
+}
+
+// Quick Actions
+async function quickApprove(testimonialId, event) {
+    if (event) {
+        event.preventDefault();
+    }
+    
+    if (!confirm("Are you sure you want to approve this testimonial?")) {
+        return;
+    }
+    
+    const button = event.target.closest('button');
+    const card = button.closest('.testimonial-review-card');
+    
+    button.disabled = true;
+    button.innerHTML = '⏳ Approving...';
+    
+    try {
+        const url = API_BASE_URL + '/testimonials/' + testimonialId + '/approve/';
+        console.log('Calling:', url);
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        });
+        
+        console.log('Response status:', response.status);
+        const responseText = await response.text();
+        console.log('Raw response:', responseText);
+        
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error('JSON Parse Error:', parseError);
+            throw new Error('Server returned invalid response. Please check the console for details.');
+        }
+        
+        if (response.ok) {
+            card.style.transition = 'all 0.3s ease-out';
+            card.style.opacity = '0';
+            card.style.transform = 'translateX(100px)';
+            
+            setTimeout(function() {
+                card.remove();
+                
+                const countElement = document.getElementById('pending-count');
+                const currentCount = parseInt(countElement.textContent);
+                const newCount = currentCount - 1;
+                countElement.textContent = newCount;
+                
+                showNotification('✅ Testimonial approved successfully!', 'success');
+                
+                if (newCount === 0) {
+                    setTimeout(function() { location.reload(); }, 1000);
+                }
+            }, 300);
+        } else {
+            throw new Error(data.detail || 'Failed to approve testimonial');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('❌ ' + error.message, 'error');
+        
+        button.disabled = false;
+        button.innerHTML = '✅ Quick Approve';
     }
 }
+
+async function quickReject(testimonialId, event) {
+    if (event) {
+        event.preventDefault();
+    }
+    
+    const reason = prompt('Please provide a reason for rejection:');
+    
+    if (!reason || reason.trim() === '') {
+        showNotification('⚠️ Rejection reason is required', 'warning');
+        return;
+    }
+    
+    const button = event.target.closest('button');
+    const card = button.closest('.testimonial-review-card');
+    
+    button.disabled = true;
+    button.innerHTML = '⏳ Rejecting...';
+    
+    try {
+        const url = API_BASE_URL + '/testimonials/' + testimonialId + '/reject/';
+        console.log('Calling:', url);
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                rejection_reason: reason.trim()
+            })
+        });
+        
+        console.log('Response status:', response.status);
+        const responseText = await response.text();
+        console.log('Raw response:', responseText);
+        
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error('JSON Parse Error:', parseError);
+            throw new Error('Server returned invalid response. Please check the console for details.');
+        }
+        
+        if (response.ok) {
+            card.style.transition = 'all 0.3s ease-out';
+            card.style.opacity = '0';
+            card.style.transform = 'translateX(-100px)';
+            
+            setTimeout(function() {
+                card.remove();
+                
+                const countElement = document.getElementById('pending-count');
+                const currentCount = parseInt(countElement.textContent);
+                const newCount = currentCount - 1;
+                countElement.textContent = newCount;
+                
+                showNotification('✅ Testimonial rejected successfully!', 'success');
+                
+                if (newCount === 0) {
+                    setTimeout(function() { location.reload(); }, 1000);
+                }
+            }, 300);
+        } else {
+            throw new Error(data.detail || 'Failed to reject testimonial');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('❌ ' + error.message, 'error');
+        
+        button.disabled = false;
+        button.innerHTML = '❌ Quick Reject';
+    }
+}
+
+// Bulk Actions
+async function bulkApprove() {
+    const count = selectedTestimonials.size;
+    
+    if (!confirm('Are you sure you want to approve ' + count + ' testimonials?')) {
+        return;
+    }
+    
+    showNotification('⏳ Approving ' + count + ' testimonials...', 'info');
+    
+    try {
+        const testimonialIdsArray = Array.from(selectedTestimonials).map(function(id) {
+            return parseInt(id);
+        });
+        
+        const url = API_BASE_URL + '/testimonials/bulk_action/';
+        console.log('Calling bulk approve:', url);
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                testimonial_ids: testimonialIdsArray,
+                action: 'approve'
+            })
+        });
+        
+        const responseText = await response.text();
+        console.log('Bulk approve response:', responseText);
+        
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error('JSON Parse Error:', parseError);
+            throw new Error('Server returned invalid response. Please check the console for details.');
+        }
+        
+        if (response.ok) {
+            showNotification('✅ Successfully approved ' + data.count + ' testimonials!', 'success');
+            
+            selectedTestimonials.forEach(function(id) {
+                const card = document.querySelector('[data-testimonial-id="' + id + '"]');
+                if (card) {
+                    card.style.transition = 'all 0.3s ease-out';
+                    card.style.opacity = '0';
+                    card.style.transform = 'translateX(100px)';
+                    setTimeout(function() { card.remove(); }, 300);
+                }
+            });
+            
+            setTimeout(function() {
+                selectedTestimonials.clear();
+                updateBulkActions();
+                clearSelection();
+                
+                const countElement = document.getElementById('pending-count');
+                const currentCount = parseInt(countElement.textContent);
+                const newCount = currentCount - data.count;
+                countElement.textContent = newCount;
+                
+                if (newCount === 0) {
+                    setTimeout(function() { location.reload(); }, 1000);
+                }
+            }, 300);
+        } else {
+            throw new Error(data.detail || 'Failed to approve testimonials');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('❌ ' + error.message, 'error');
+    }
+}
+
+async function bulkReject() {
+    const count = selectedTestimonials.size;
+    const reason = prompt('Please provide a reason for rejecting ' + count + ' testimonials:');
+    
+    if (!reason || reason.trim() === '') {
+        showNotification('⚠️ Rejection reason is required', 'warning');
+        return;
+    }
+    
+    showNotification('⏳ Rejecting ' + count + ' testimonials...', 'info');
+    
+    try {
+        const testimonialIdsArray = Array.from(selectedTestimonials).map(function(id) {
+            return parseInt(id);
+        });
+        
+        const url = API_BASE_URL + '/testimonials/bulk_action/';
+        console.log('Calling bulk reject:', url);
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                testimonial_ids: testimonialIdsArray,
+                action: 'reject',
+                rejection_reason: reason.trim()
+            })
+        });
+        
+        const responseText = await response.text();
+        console.log('Bulk reject response:', responseText);
+        
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (parseError) {
+            console.error('JSON Parse Error:', parseError);
+            throw new Error('Server returned invalid response. Please check the console for details.');
+        }
+        
+        if (response.ok) {
+            showNotification('✅ Successfully rejected ' + data.count + ' testimonials!', 'success');
+            
+            selectedTestimonials.forEach(function(id) {
+                const card = document.querySelector('[data-testimonial-id="' + id + '"]');
+                if (card) {
+                    card.style.transition = 'all 0.3s ease-out';
+                    card.style.opacity = '0';
+                    card.style.transform = 'translateX(-100px)';
+                    setTimeout(function() { card.remove(); }, 300);
+                }
+            });
+            
+            setTimeout(function() {
+                selectedTestimonials.clear();
+                updateBulkActions();
+                clearSelection();
+                
+                const countElement = document.getElementById('pending-count');
+                const currentCount = parseInt(countElement.textContent);
+                const newCount = currentCount - data.count;
+                countElement.textContent = newCount;
+                
+                if (newCount === 0) {
+                    setTimeout(function() { location.reload(); }, 1000);
+                }
+            }, 300);
+        } else {
+            throw new Error(data.detail || 'Failed to reject testimonials');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showNotification('❌ ' + error.message, 'error');
+    }
+}
+
+// Notification Helper
+function showNotification(message, type) {
+    type = type || 'info';
+    
+    const notification = document.createElement('div');
+    notification.className = 'notification notification-' + type;
+    notification.textContent = message;
+    notification.style.cssText = 
+        'position: fixed;' +
+        'top: 20px;' +
+        'right: 20px;' +
+        'padding: 1rem 1.5rem;' +
+        'background: ' + (type === 'success' ? '#d1fae5' : type === 'error' ? '#fee2e2' : '#fef3c7') + ';' +
+        'color: ' + (type === 'success' ? '#065f46' : type === 'error' ? '#991b1b' : '#92400e') + ';' +
+        'border-radius: 8px;' +
+        'box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);' +
+        'z-index: 9999;' +
+        'font-weight: 500;' +
+        'animation: slideIn 0.3s ease-out;' +
+        'max-width: 400px;';
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(function() {
+        notification.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(function() {
+            notification.remove();
+        }, 300);
+    }, 3000);
+}
+
+// Add CSS animations
+const style = document.createElement('style');
+style.textContent = 
+    '@keyframes slideIn {' +
+    '    from { transform: translateX(100%); opacity: 0; }' +
+    '    to { transform: translateX(0); opacity: 1; }' +
+    '}' +
+    '@keyframes slideOut {' +
+    '    from { transform: translateX(0); opacity: 1; }' +
+    '    to { transform: translateX(100%); opacity: 0; }' +
+    '}';
+document.head.appendChild(style);
 </script>
 {% endblock %}
