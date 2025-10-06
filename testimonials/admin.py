@@ -162,52 +162,16 @@ class TestimonialAdmin(admin.ModelAdmin):
     
 
     def reject_testimonials(self, request, queryset):
-        """
-        Admin action to reject testimonials.
-        FIXED: Properly skips Django's default confirmation to avoid double confirmation.
-        """
-        # Check if we're processing the final form submission
-        if 'apply' in request.POST:
-            rejection_reason = request.POST.get('rejection_reason', '').strip()
-            
-            if not rejection_reason:
-                self.message_user(request, _('Rejection reason is required.'), level='error')
-                return HttpResponseRedirect(request.get_full_path())
-            
-            updated = 0
-            for testimonial in queryset:
-                if testimonial.status != TestimonialStatus.REJECTED:
-                    testimonial.status = TestimonialStatus.REJECTED
-                    testimonial.rejection_reason = rejection_reason
-                    testimonial.save()
-                    updated += 1
-            
-            self.message_user(request, _('%(count)d testimonials were rejected.') % {'count': updated})
-            return HttpResponseRedirect(request.get_full_path())
+        """Admin action to reject testimonials."""
+        updated = 0
+        for testimonial in queryset:
+            if testimonial.status != TestimonialStatus.REJECTED:
+                testimonial.status = TestimonialStatus.REJECTED
+                testimonial.rejection_reason = _('Rejected by admin')
+                testimonial.save()
+                updated += 1
         
-        # CRITICAL FIX: Check if this is the first call from the action dropdown
-        # We need to bypass Django's intermediate page entirely
-        if '_selected_action' in request.POST:
-            # Get selected testimonial IDs
-            selected = request.POST.getlist('_selected_action')
-            queryset = self.model.objects.filter(pk__in=selected)
-            
-            # Build context for our custom template
-            context = {
-                **self.admin_site.each_context(request),
-                'title': _('Enter rejection reason'),
-                'queryset': queryset,
-                'action_checkbox_name': admin.helpers.ACTION_CHECKBOX_NAME,
-                'action': 'reject_testimonials',
-                'opts': self.model._meta,
-                'selected_items': selected,  # Pass the selected IDs
-            }
-            
-            # Render our custom rejection form directly (skipping Django's confirmation)
-            return render(request, 'testimonials/admin/testimonials/reject_testimonials.html', context)
-        
-        # Fallback (shouldn't normally reach here)
-        return None
+        self.message_user(request, _('%(count)d testimonials were rejected.') % {'count': updated})
 
     reject_testimonials.short_description = _('Reject selected testimonials')
     
