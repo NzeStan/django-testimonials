@@ -10,7 +10,6 @@ from django.db.models import Count, Avg, Q, Prefetch, Case, When, IntegerField
 from django.utils import timezone
 
 from .constants import TestimonialStatus, TestimonialSource, TestimonialMediaType
-from .utils import get_cache_key, cache_get_or_set, get_search_query
 from .conf import app_settings
 
 # Import mixins
