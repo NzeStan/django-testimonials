@@ -1,16 +1,27 @@
+# testimonials/forms.py - REFACTORED
+
+"""
+Refactored forms using validation mixins to eliminate duplication.
+"""
+
 from django import forms
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
-from django.conf import settings  # Import settings for the PublicTestimonialForm
+from django.conf import settings
+
 from .models import Testimonial, TestimonialCategory, TestimonialMedia
 from .constants import TestimonialStatus, TestimonialSource
 from .fields import RatingField, StatusField, SourceField, StarRatingWidget
 from .conf import app_settings
 
+# Import validation mixin
+from .mixins import FileValidationMixin, AnonymousUserValidationMixin
 
-class TestimonialForm(forms.ModelForm):
+
+class TestimonialForm(AnonymousUserValidationMixin, forms.ModelForm):
     """
     Form for creating and editing testimonials.
+    Uses AnonymousUserValidationMixin for validation.
     """
     rating = RatingField(
         max_rating=app_settings.MAX_RATING,
@@ -19,7 +30,6 @@ class TestimonialForm(forms.ModelForm):
     )
     
     status = StatusField(required=False)
-    
     source = SourceField(required=False)
     
     content = forms.CharField(
@@ -40,42 +50,42 @@ class TestimonialForm(forms.ModelForm):
         self.user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
         
-        # Set initial values based on user
+        # Prefill from user using mixin method
         if self.user and self.user.is_authenticated and not self.instance.pk:
-            self.fields['author_name'].initial = getattr(self.user, 'get_full_name', lambda: self.user.username)()
-            if hasattr(self.user, 'email'):
-                self.fields['author_email'].initial = self.user.email
+            initial_data = {}
+            initial_data = self.prefill_author_from_user(initial_data, self.user)
+            self.fields['author_name'].initial = initial_data.get('author_name')
+            self.fields['author_email'].initial = initial_data.get('author_email')
         
-        # Hide status field for non-staff users
+        # Hide admin fields for non-staff
         if not (self.user and self.user.is_staff):
             self.fields['status'].widget = forms.HiddenInput()
             self.fields['status'].initial = TestimonialStatus.PENDING
-        
-        # Hide source field for non-staff users
-        if not (self.user and self.user.is_staff):
             self.fields['source'].widget = forms.HiddenInput()
             self.fields['source'].initial = TestimonialSource.WEBSITE
         
-        # Make category field more user-friendly
+        # Configure category field
         if 'category' in self.fields:
             self.fields['category'].queryset = TestimonialCategory.objects.active()
             self.fields['category'].empty_label = _("No category")
             self.fields['category'].required = False
         
-        # Adjust required fields
+        # Handle anonymous setting
         if not app_settings.ALLOW_ANONYMOUS:
             self.fields['is_anonymous'].widget = forms.HiddenInput()
             self.fields['is_anonymous'].initial = False
     
     def clean(self):
         cleaned_data = super().clean()
-        is_anonymous = cleaned_data.get('is_anonymous')
+        is_anonymous = cleaned_data.get('is_anonymous', False)
         
-        # Validate anonymous testimonials
-        if is_anonymous and not app_settings.ALLOW_ANONYMOUS:
-            raise ValidationError(_("Anonymous testimonials are not allowed."))
+        # Validate anonymous policy using mixin
+        try:
+            self.validate_anonymous_policy(is_anonymous, app_settings.ALLOW_ANONYMOUS)
+        except Exception as e:
+            raise ValidationError(str(e))
         
-        # Validate user is authenticated for non-anonymous testimonials if required
+        # Validate authenticated requirement
         if not is_anonymous and not app_settings.ALLOW_ANONYMOUS and not self.user:
             raise ValidationError(_("You must be logged in to submit a testimonial."))
         
@@ -84,16 +94,16 @@ class TestimonialForm(forms.ModelForm):
     def save(self, commit=True):
         instance = super().save(commit=False)
         
-        # Set the author if the user is authenticated
+        # Set author if authenticated
         if self.user and self.user.is_authenticated and not instance.author:
             instance.author = self.user
         
-        # Set status based on settings
+        # Set default status
         if not instance.status:
-            if app_settings.REQUIRE_APPROVAL:
-                instance.status = TestimonialStatus.PENDING
-            else:
-                instance.status = TestimonialStatus.APPROVED
+            instance.status = (
+                TestimonialStatus.PENDING if app_settings.REQUIRE_APPROVAL
+                else TestimonialStatus.APPROVED
+            )
         
         if commit:
             instance.save()
@@ -101,10 +111,42 @@ class TestimonialForm(forms.ModelForm):
         return instance
 
 
+class PublicTestimonialForm(TestimonialForm):
+    """
+    Simplified form for public testimonial submission.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Hide admin-only fields
+        for field in ['status', 'source']:
+            if field in self.fields:
+                self.fields[field].widget = forms.HiddenInput()
+        
+        # Required fields for public
+        self.fields['author_name'].required = True
+        self.fields['content'].required = True
+        self.fields['rating'].required = True
+        
+        # Optional fields
+        self.fields['author_email'].required = False
+        self.fields['author_phone'].required = False
+        
+        # Privacy consent if required
+        if getattr(settings, 'TESTIMONIALS_REQUIRE_PRIVACY_CONSENT', False):
+            self.fields['privacy_consent'] = forms.BooleanField(
+                required=True,
+                label=_("I consent to the storage and processing of my personal data."),
+                error_messages={
+                    'required': _("You must consent to the privacy policy to submit a testimonial.")
+                }
+            )
+
+
 class TestimonialAdminForm(forms.ModelForm):
     """
     Form for testimonial administration.
-    Extends the basic form with additional admin-specific fields.
     """
     
     rejection_reason = forms.CharField(
@@ -135,7 +177,7 @@ class TestimonialAdminForm(forms.ModelForm):
         status = cleaned_data.get('status')
         rejection_reason = cleaned_data.get('rejection_reason')
         
-        # Require rejection reason when status is rejected
+        # Require rejection reason when rejecting
         if status == TestimonialStatus.REJECTED and not rejection_reason:
             self.add_error('rejection_reason', _("Please provide a reason for rejection."))
         
@@ -160,7 +202,7 @@ class TestimonialCategoryForm(forms.ModelForm):
             slug = slugify(self.cleaned_data['name'])
             
             # Check for uniqueness
-            if TestimonialCategory.objects.filter(slug=slug).exists():
+            if TestimonialCategory.objects.filter(slug=slug).exclude(pk=self.instance.pk).exists():
                 count = 1
                 while TestimonialCategory.objects.filter(slug=f"{slug}-{count}").exists():
                     count += 1
@@ -169,9 +211,10 @@ class TestimonialCategoryForm(forms.ModelForm):
         return slug
 
 
-class TestimonialMediaForm(forms.ModelForm):
+class TestimonialMediaForm(FileValidationMixin, forms.ModelForm):
     """
     Form for testimonial media.
+    Uses FileValidationMixin for file validation.
     """
     
     class Meta:
@@ -188,26 +231,23 @@ class TestimonialMediaForm(forms.ModelForm):
             self.fields['testimonial'].widget = forms.HiddenInput()
     
     def clean_file(self):
+        """
+        Validate file using mixin method.
+        Much cleaner than duplicated validation!
+        """
         file_obj = self.cleaned_data.get('file')
         
-        # Validate file size
-        max_size_mb = 5  # 5MB limit
-        if file_obj and file_obj.size > max_size_mb * 1024 * 1024:
-            raise ValidationError(
-                _("File size exceeds the limit of %(max)s MB."),
-                params={'max': max_size_mb}
-            )
+        if not file_obj:
+            return file_obj
         
-        # Validate file extension
-        allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'webm', 'mov', 'mp3', 'wav', 'ogg', 'pdf']
-        ext = file_obj.name.split('.')[-1].lower()
-        if ext not in allowed_extensions:
-            raise ValidationError(
-                _("File type not allowed. Allowed types: %(types)s"),
-                params={'types': ', '.join(allowed_extensions)}
-            )
+        # Use mixin for validation
+        allowed_extensions = app_settings.ALLOWED_FILE_EXTENSIONS
+        max_size = app_settings.MAX_FILE_SIZE
         
-        return file_obj
+        try:
+            return self.validate_uploaded_file(file_obj, allowed_extensions, max_size)
+        except Exception as e:
+            raise ValidationError(str(e))
     
     def clean(self):
         cleaned_data = super().clean()
@@ -224,84 +264,32 @@ class TestimonialMediaForm(forms.ModelForm):
         return cleaned_data
 
 
-class PublicTestimonialForm(TestimonialForm):
-    """
-    Simplified form for public testimonial submission.
-    """
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        
-        # Remove admin-only fields
-        for field in ['status', 'source']:
-            if field in self.fields:
-                self.fields[field].widget = forms.HiddenInput()
-        
-        # Make certain fields required
-        self.fields['author_name'].required = True
-        self.fields['content'].required = True
-        self.fields['rating'].required = True
-        
-        # Make certain fields optional
-        self.fields['author_email'].required = False
-        self.fields['author_phone'].required = False
-        
-        # Add privacy consent if needed
-        if getattr(settings, 'TESTIMONIALS_REQUIRE_PRIVACY_CONSENT', False):
-            self.fields['privacy_consent'] = forms.BooleanField(
-                required=True,
-                label=_("I consent to the storage and processing of my personal data."),
-                error_messages={
-                    'required': _("You must consent to the privacy policy to submit a testimonial.")
-                }
-            )
-
-
 class TestimonialFilterForm(forms.Form):
     """
     Form for filtering testimonials in the admin interface.
     """
+    
     status = forms.ChoiceField(
-        choices=[('', _('All Statuses'))] + list(TestimonialStatus.choices),
-        required=False
+        choices=[('', _('All'))] + list(TestimonialStatus.choices),
+        required=False,
+        label=_("Status")
     )
     
     category = forms.ModelChoiceField(
-        queryset=TestimonialCategory.objects.all(),
+        queryset=TestimonialCategory.objects.active(),
         required=False,
-        empty_label=_('All Categories')
+        empty_label=_("All categories"),
+        label=_("Category")
     )
     
-    min_rating = forms.IntegerField(
+    rating = forms.ChoiceField(
+        choices=[('', _('All'))] + [(str(i), f"{i} ★") for i in range(1, app_settings.MAX_RATING + 1)],
         required=False,
-        min_value=1,
-        max_value=app_settings.MAX_RATING,
-        label=_('Minimum Rating')
-    )
-    
-    max_rating = forms.IntegerField(
-        required=False,
-        min_value=1,
-        max_value=app_settings.MAX_RATING,
-        label=_('Maximum Rating')
-    )
-    
-    date_from = forms.DateField(
-        required=False,
-        widget=forms.DateInput(attrs={'type': 'date'}),
-        label=_('Date From')
-    )
-    
-    date_to = forms.DateField(
-        required=False,
-        widget=forms.DateInput(attrs={'type': 'date'}),
-        label=_('Date To')
+        label=_("Minimum Rating")
     )
     
     search = forms.CharField(
         required=False,
-        label=_('Search'),
-        widget=forms.TextInput(attrs={'placeholder': _('Search testimonials...')})
+        widget=forms.TextInput(attrs={'placeholder': _('Search...')}),
+        label=_("Search")
     )
-
-

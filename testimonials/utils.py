@@ -1,370 +1,128 @@
+# testimonials/utils.py - REFACTORED
+
+"""
+Utility functions for the testimonials app.
+Refactored to use services for cache and task management.
+"""
+
 import logging
-import uuid
 import os
-from io import BytesIO
 from django.utils import timezone
-from django.core.exceptions import ValidationError
 from django.utils.text import slugify
-from django.utils.translation import gettext_lazy as _
-from django.core.cache import cache
-from django.core.files.base import ContentFile
 from .conf import app_settings
-from .constants import TestimonialMediaType
-import logging
-# Set up logging
+
 logger = logging.getLogger("testimonials")
 
 
-# === CACHE UTILITIES ===
+# === IMPORT SERVICES ===
+# Import from services instead of defining here
+from .services import TestimonialCacheService, TaskExecutor
 
-def get_cache_key(key_type, *args):
+
+# === FILE UTILITIES ===
+
+def generate_upload_path(instance, filename):
     """
-    Generate a consistent cache key with prefix.
+    Generate dynamic upload path for media files.
     
     Args:
-        key_type: Type of cache key (e.g., 'testimonial', 'category', 'stats')
-        *args: Additional key components
-    
+        instance: Model instance
+        filename: Original filename
+        
     Returns:
-        String cache key
+        Upload path string
     """
-    prefix = app_settings.CACHE_KEY_PREFIX
-    key_parts = [prefix, key_type] + [str(arg) for arg in args]
-    return ':'.join(key_parts)
+    from datetime import datetime
+    
+    # Get file extension
+    ext = filename.split('.')[-1] if '.' in filename else 'file'
+    
+    # Generate path: testimonials/media/YYYY/MM/filename
+    now = datetime.now()
+    year = now.strftime('%Y')
+    month = now.strftime('%m')
+    
+    # Clean filename
+    base_name = os.path.splitext(filename)[0]
+    clean_name = slugify(base_name)[:50]
+    
+    # Add timestamp to avoid collisions
+    timestamp = now.strftime('%Y%m%d_%H%M%S')
+    new_filename = f"{clean_name}_{timestamp}.{ext}"
+    
+    return f'testimonials/media/{year}/{month}/{new_filename}'
 
 
-def cache_get_or_set(key, callable_func, timeout=None, version=None):
+def get_file_type(file_obj):
     """
-    Get from cache or set with callable if Redis cache is enabled.
-    Falls back to direct callable execution if caching is disabled.
+    Detect file type from extension.
     
     Args:
-        key: Cache key
-        callable_func: Function to call if cache miss
-        timeout: Cache timeout in seconds
-        version: Cache version
-    
+        file_obj: File object
+        
     Returns:
-        Cached or computed value
+        Media type constant
     """
-    if not app_settings.USE_REDIS_CACHE:
-        return callable_func()
+    from .constants import TestimonialMediaType
     
-    timeout = timeout or app_settings.CACHE_TIMEOUT
+    if not file_obj or not hasattr(file_obj, 'name'):
+        return TestimonialMediaType.DOCUMENT
     
-    try:
-        return cache.get_or_set(key, callable_func, timeout, version)
-    except Exception as e:
-        logger.warning(f"Cache operation failed: {e}, falling back to direct execution")
-        return callable_func()
-
-
-def invalidate_cache_pattern(pattern):
-    """
-    Invalidate cache keys matching a pattern.
-    Only works if Redis cache is enabled.
+    filename = file_obj.name.lower()
+    ext = filename.split('.')[-1] if '.' in filename else ''
     
-    Args:
-        pattern: Cache key pattern (e.g., 'testimonials:category:*')
-    """
-    if not app_settings.USE_REDIS_CACHE:
-        return
+    # Image extensions
+    image_exts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp']
+    if ext in image_exts:
+        return TestimonialMediaType.IMAGE
     
-    try:
-        # Try to use Django's cache framework
-        if hasattr(cache, 'delete_pattern'):
-            cache.delete_pattern(pattern)
-        else:
-            # Fallback for basic cache backends
-            logger.info(f"Cache pattern invalidation not supported, pattern: {pattern}")
-    except Exception as e:
-        logger.warning(f"Cache pattern invalidation failed: {e}")
-
-
-def invalidate_testimonial_cache(testimonial_id=None, category_id=None, user_id=None):
-    """
-    Invalidate testimonial-related cache entries.
+    # Video extensions
+    video_exts = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv']
+    if ext in video_exts:
+        return TestimonialMediaType.VIDEO
     
-    Args:
-        testimonial_id: Specific testimonial ID
-        category_id: Specific category ID  
-        user_id: Specific user ID
-    """
-    if not app_settings.USE_REDIS_CACHE:
-        return
+    # Audio extensions
+    audio_exts = ['mp3', 'wav', 'ogg', 'aac', 'm4a', 'flac']
+    if ext in audio_exts:
+        return TestimonialMediaType.AUDIO
     
-    cache_keys = []
-    
-    # General cache keys
-    cache_keys.extend([
-        get_cache_key('stats'),
-        get_cache_key('featured_testimonials'),
-        get_cache_key('published_testimonials'),
-        get_cache_key('testimonial_counts'),
-    ])
-    
-    # Specific testimonial cache
-    if testimonial_id:
-        cache_keys.append(get_cache_key('testimonial', testimonial_id))
-    
-    # Category-specific cache
-    if category_id:
-        cache_keys.extend([
-            get_cache_key('category', category_id),
-            get_cache_key('category_testimonials', category_id),
-            get_cache_key('category_stats', category_id),
-        ])
-    
-    # User-specific cache
-    if user_id:
-        cache_keys.extend([
-            get_cache_key('user_testimonials', user_id),
-            get_cache_key('user_stats', user_id),
-        ])
-    
-    # Delete cache keys
-    try:
-        cache.delete_many(cache_keys)
-        logger.debug(f"Invalidated {len(cache_keys)} cache keys")
-    except Exception as e:
-        logger.warning(f"Cache invalidation failed: {e}")
-
-
-# === CELERY TASK UTILITIES ===
-
-def get_celery_app():
-    """
-    Get the Celery app instance if available.
-    
-    Returns:
-        Celery app or None if not available
-    """
-    if not app_settings.USE_CELERY:
-        return None
-    
-    try:
-        from celery import current_app
-        return current_app
-    except ImportError:
-        logger.warning("Celery not available, falling back to synchronous execution")
-        return None
-
-
-def execute_task(task_func, *args, **kwargs):
-    """
-    Execute a task either asynchronously (if Celery enabled) or synchronously.
-    
-    Args:
-        task_func: Task function to execute
-        *args: Task arguments
-        **kwargs: Task keyword arguments
-    
-    Returns:
-        Task result or None for async execution
-    """
-    celery_app = get_celery_app()
-    
-    if celery_app and hasattr(task_func, 'delay'):
-        try:
-            # Execute asynchronously
-            return task_func.delay(*args, **kwargs)
-        except Exception as e:
-            logger.warning(f"Async task execution failed: {e}, falling back to sync")
-    
-    # Execute synchronously
-    try:
-        return task_func(*args, **kwargs)
-    except Exception as e:
-        logger.error(f"Task execution failed: {e}")
-        return None
+    # Default to document
+    return TestimonialMediaType.DOCUMENT
 
 
 # === SLUG UTILITIES ===
 
 def get_unique_slug(model_instance, slug_field, max_length=50):
     """
-    Generate a unique slug for a model instance with optimized database queries.
-
+    Generate a unique slug for a model instance.
+    
     Args:
-        model_instance: The model instance to generate a slug for
-        slug_field: The field name to use for creating the slug
-        max_length: Maximum length of the slug
+        model_instance: Model instance
+        slug_field: Field name to generate slug from
+        max_length: Maximum slug length
+        
+    Returns:
+        Unique slug string
     """
-    slug_source = getattr(model_instance, slug_field, "")
-    if not slug_source:
-        # Fallback if source field empty
-        slug_source = f"{getattr(model_instance, 'author_name', 'testimonial')}-{timezone.now().timestamp()}"
-
-    slug = slugify(slug_source)[:max_length]
-    unique_slug = slug
-
     model_class = model_instance.__class__
-    extension = 1
-
-    # Exclude self on updates and only check slug field for efficiency
-    qs = model_class.objects.exclude(pk=model_instance.pk).only('slug')
-
-    # Use exists() for better performance
-    while qs.filter(slug=unique_slug).exists():
-        extension_str = f"-{extension}"
-        unique_slug = f"{slug[:max_length - len(extension_str)]}{extension_str}"
-        extension += 1
-
-    return unique_slug
-
-
-# === FILE HANDLING UTILITIES ===
-
-def generate_upload_path(instance, filename):
-    """Generate a unique upload path for testimonial media files."""
-    # Sanitize the original filename extension
-    ext = os.path.splitext(filename)[1].lower().lstrip('.')
-    if not ext:
-        ext = 'bin'  # fallback for files without extension
+    original_slug = slugify(getattr(model_instance, slug_field))[:max_length]
+    slug = original_slug
     
-    # Generate a UUID filename
-    unique_filename = f"{uuid.uuid4()}.{ext}"
+    # Check for uniqueness
+    counter = 1
+    while model_class.objects.filter(slug=slug).exclude(pk=model_instance.pk).exists():
+        suffix = f'-{counter}'
+        slug = f'{original_slug[:max_length - len(suffix)]}{suffix}'
+        counter += 1
     
-    # Get the testimonial ID and organize by date
-    testimonial_id = getattr(instance, "testimonial_id", None)
-    date_path = timezone.now().strftime('%Y/%m/%d')
-    
-    if testimonial_id:
-        return os.path.join(
-            app_settings.MEDIA_UPLOAD_PATH, 
-            date_path,
-            str(testimonial_id), 
-            unique_filename
-        )
-    else:
-        return os.path.join(
-            app_settings.MEDIA_UPLOAD_PATH, 
-            date_path,
-            "misc", 
-            unique_filename
-        )
-
-def get_file_type(file_obj):
-    """
-    Determine the type of a file based on its extension with proper validation.
-    
-    Args:
-        file_obj: File object or file path
-        
-    Returns:
-        str: Media type constant from TestimonialMediaType
-        
-    Raises:
-        ValidationError: If file type is not allowed
-    """
-
-    # Get filename
-    if hasattr(file_obj, "name"):
-        filename = file_obj.name
-    else:
-        filename = str(file_obj)
-    
-    # Handle cases where filename might not have an extension
-    if '.' not in filename:
-        raise ValidationError(_("File must have an extension"))
-    
-    # Get extension and normalize it
-    ext = filename.split('.')[-1].lower().strip()
-    
-    # Get the allowed extensions from settings
-    allowed_extensions = app_settings.ALLOWED_FILE_EXTENSIONS
-    
-    # FIXED: Normalize allowed extensions to lowercase for comparison
-    allowed_extensions_lower = [e.lower().strip() for e in allowed_extensions]
-    
-    # FIXED: Check if extension is in the allowed list (case-insensitive)
-    if ext not in allowed_extensions_lower:
-        raise ValidationError(
-            _("File type '.%(ext)s' is not allowed. Allowed types: %(types)s") % {
-                'ext': ext,
-                'types': ', '.join(allowed_extensions)
-            }
-        )
-    
-    # Define file types by extension (all lowercase)
-    type_mapping = {
-        TestimonialMediaType.IMAGE: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'],
-        TestimonialMediaType.VIDEO: ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'wmv', 'mpeg', 'mpg'],
-        TestimonialMediaType.AUDIO: ['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a', 'wma'],
-        TestimonialMediaType.DOCUMENT: ['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt', 'xls', 'xlsx', 'ppt', 'pptx'],
-    }
-    
-    # Find matching type
-    for media_type, extensions in type_mapping.items():
-        if ext in extensions:
-            logger.debug(f"Detected media type '{media_type}' for file extension '.{ext}'")
-            return media_type
-    
-    # If extension is allowed but not in type_mapping, default to document
-    logger.warning(f"File extension '.{ext}' is allowed but not mapped to a specific type, defaulting to DOCUMENT")
-    return TestimonialMediaType.DOCUMENT
-
-
-# === THUMBNAIL UTILITIES ===
-
-def generate_thumbnails(image_file, sizes=None):
-    """
-    Generate thumbnails for an image file.
-    
-    Args:
-        image_file: Image file object
-        sizes: Dictionary of size names and dimensions
-        
-    Returns:
-        Dictionary of thumbnail files
-    """
-    if not app_settings.ENABLE_THUMBNAILS:
-        return {}
-    
-    sizes = sizes or app_settings.THUMBNAIL_SIZES
-    thumbnails = {}
-    
-    try:
-        from PIL import Image
-        
-        # Open the image
-        image = Image.open(image_file)
-        
-        # Convert to RGB if necessary (for PNG with transparency)
-        if image.mode in ('RGBA', 'LA', 'P'):
-            image = image.convert('RGB')
-        
-        # Generate thumbnails
-        for size_name, (width, height) in sizes.items():
-            # Create thumbnail
-            thumbnail = image.copy()
-            thumbnail.thumbnail((width, height), Image.Resampling.LANCZOS)
-            
-            # Save to BytesIO
-            output = BytesIO()
-            thumbnail.save(output, format='JPEG', quality=85, optimize=True)
-            output.seek(0)
-            
-            # Create ContentFile
-            thumbnail_file = ContentFile(
-                output.getvalue(),
-                name=f"thumb_{size_name}_{image_file.name}"
-            )
-            
-            thumbnails[size_name] = thumbnail_file
-        
-        return thumbnails
-        
-    except Exception as e:
-        logger.error(f"Thumbnail generation failed: {e}")
-        return {}
+    return slug
 
 
 # === LOGGING UTILITIES ===
 
 def log_testimonial_action(testimonial, action, user=None, notes=None, extra_data=None):
     """
-    Log a testimonial action for auditing purposes with structured logging.
+    Log testimonial actions for audit trail.
     
     Args:
         testimonial: The testimonial instance
@@ -396,23 +154,184 @@ def log_testimonial_action(testimonial, action, user=None, notes=None, extra_dat
     )
 
 
-# === PERFORMANCE UTILITIES ===
+# === SEARCH UTILITIES ===
+
+def get_search_query(query):
+    """
+    Validate and prepare search query.
+    
+    Args:
+        query: Raw search query string
+        
+    Returns:
+        Cleaned search query or None if invalid
+    """
+    if not query:
+        return None
+    
+    cleaned_query = query.strip()
+    
+    if len(cleaned_query) < app_settings.SEARCH_MIN_LENGTH:
+        return None
+    
+    return cleaned_query
+
+
+# === CACHE UTILITIES (BACKWARD COMPATIBLE) ===
+
+def get_cache_key(prefix, *args):
+    """
+    Generate cache key (backward compatible).
+    Now delegates to CacheService.
+    
+    Args:
+        prefix: Key prefix
+        *args: Additional key components
+        
+    Returns:
+        Cache key string
+    """
+    # Map old prefixes to new service patterns
+    pattern_map = {
+        'testimonial': 'TESTIMONIAL',
+        'category': 'CATEGORY',
+        'stats': 'STATS',
+        'featured_testimonials': 'FEATURED',
+        'user_testimonials': 'USER_TESTIMONIALS',
+    }
+    
+    pattern_name = pattern_map.get(prefix, prefix.upper())
+    
+    # Handle args
+    if args:
+        if len(args) == 1:
+            return TestimonialCacheService.get_key(pattern_name, id=args[0])
+        else:
+            # Fallback for complex keys
+            key_parts = [app_settings.CACHE_KEY_PREFIX, prefix] + [str(arg) for arg in args]
+            return ':'.join(key_parts)
+    
+    return TestimonialCacheService.get_key(pattern_name)
+
+
+def cache_get_or_set(cache_key, callable_func, timeout=None):
+    """
+    Get from cache or compute (backward compatible).
+    Now delegates to CacheService.
+    
+    Args:
+        cache_key: Cache key
+        callable_func: Function to call if cache miss
+        timeout: Cache timeout
+        
+    Returns:
+        Cached or computed value
+    """
+    return TestimonialCacheService.get_or_set(cache_key, callable_func, timeout)
+
+
+def invalidate_testimonial_cache(testimonial_id=None, category_id=None, user_id=None):
+    """
+    Invalidate testimonial caches (backward compatible).
+    Now delegates to CacheService.
+    
+    Args:
+        testimonial_id: Testimonial ID
+        category_id: Category ID
+        user_id: User ID
+    """
+    TestimonialCacheService.invalidate_testimonial(
+        testimonial_id=testimonial_id,
+        category_id=category_id,
+        user_id=user_id
+    )
+
+
+# === TASK UTILITIES (BACKWARD COMPATIBLE) ===
+
+def execute_task(task_func, *args, **kwargs):
+    """
+    Execute task (backward compatible).
+    Now delegates to TaskExecutor.
+    
+    Args:
+        task_func: Task function
+        *args: Task arguments
+        **kwargs: Task keyword arguments
+        
+    Returns:
+        Task result
+    """
+    return TaskExecutor.execute(task_func, *args, **kwargs)
+
+
+# === THUMBNAIL UTILITIES ===
+
+def generate_thumbnails(image_path, sizes=None):
+    """
+    Generate thumbnails for an image.
+    
+    Args:
+        image_path: Path to original image
+        sizes: Dict of size names to dimensions
+        
+    Returns:
+        Dict of thumbnail paths
+    """
+    if not app_settings.ENABLE_THUMBNAILS:
+        return {}
+    
+    if sizes is None:
+        sizes = app_settings.THUMBNAIL_SIZES
+    
+    thumbnails = {}
+    
+    try:
+        from PIL import Image
+        import os
+        
+        # Open original image
+        img = Image.open(image_path)
+        
+        # Generate each thumbnail
+        for size_name, dimensions in sizes.items():
+            # Create thumbnail
+            thumb = img.copy()
+            thumb.thumbnail(dimensions, Image.Resampling.LANCZOS)
+            
+            # Generate thumbnail path
+            base, ext = os.path.splitext(image_path)
+            thumb_path = f"{base}_{size_name}{ext}"
+            
+            # Save thumbnail
+            thumb.save(thumb_path, quality=85, optimize=True)
+            thumbnails[size_name] = thumb_path
+            
+            logger.debug(f"Generated {size_name} thumbnail: {thumb_path}")
+        
+        return thumbnails
+    
+    except Exception as e:
+        logger.error(f"Error generating thumbnails: {e}")
+        return {}
+
+
+# === BATCH PROCESSING ===
 
 def batch_process(queryset, batch_size=None, callback=None):
     """
-    Process queryset in batches for better memory usage.
+    Process queryset in batches (backward compatible).
     
     Args:
-        queryset: Django queryset to process
-        batch_size: Size of each batch
-        callback: Function to call for each batch
+        queryset: Django queryset
+        batch_size: Batch size
+        callback: Callback function
         
     Yields:
         Batches of objects
     """
     batch_size = batch_size or app_settings.BULK_OPERATION_BATCH_SIZE
     
-    # Use iterator() for memory efficiency
     iterator = queryset.iterator(chunk_size=batch_size)
     batch = []
     
@@ -430,24 +349,3 @@ def batch_process(queryset, batch_size=None, callback=None):
         if callback:
             callback(batch)
         yield batch
-
-
-def get_search_query(query):
-    """
-    Validate and prepare search query with minimum length checking.
-    
-    Args:
-        query: Raw search query string
-        
-    Returns:
-        Cleaned search query or None if invalid
-    """
-    if not query:
-        return None
-    
-    cleaned_query = query.strip()
-    
-    if len(cleaned_query) < app_settings.SEARCH_MIN_LENGTH:
-        return None
-    
-    return cleaned_query
