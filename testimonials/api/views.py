@@ -1,7 +1,7 @@
-# testimonials/api/views.py - REFACTORED
+# testimonials/api/views.py - FIXED
 
 """
-Refactored API views using services for cache and task management.
+API views with proper settings respect for USE_REDIS_CACHE and USE_CELERY.
 """
 
 from rest_framework import viewsets, permissions, filters, status
@@ -17,7 +17,7 @@ from ..models import Testimonial, TestimonialCategory, TestimonialMedia
 from ..constants import TestimonialStatus, TestimonialMediaType
 from ..conf import app_settings
 
-# Import services instead of utils
+# Import services
 from ..services import TestimonialCacheService, TaskExecutor
 from ..utils import log_testimonial_action
 
@@ -49,7 +49,7 @@ class OptimizedPagination(PageNumberPagination):
         """Enhanced pagination response with cache headers."""
         response = super().get_paginated_response(data)
         
-        # Add cache headers for better client-side caching
+        # ✅ FIXED: Only add cache headers if Redis is enabled
         if app_settings.USE_REDIS_CACHE:
             response['Cache-Control'] = f'public, max-age={app_settings.CACHE_TIMEOUT}'
             response['Vary'] = 'Accept, Accept-Language, Authorization'
@@ -59,7 +59,7 @@ class OptimizedPagination(PageNumberPagination):
 
 class TestimonialViewSet(viewsets.ModelViewSet):
     """
-    Highly optimized API endpoint for testimonials with caching and performance monitoring.
+    Highly optimized API endpoint for testimonials with proper settings respect.
     """
     queryset = Testimonial.objects.optimized_for_api()
     serializer_class = TestimonialSerializer
@@ -71,9 +71,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     ordering = ['-display_order', '-created_at']
     
     def get_queryset(self):
-        """
-        Optimized queryset with comprehensive prefetching and permission filtering.
-        """
+        """Optimized queryset with comprehensive prefetching and permission filtering."""
         user = self.request.user
         
         # Base queryset with optimized relations
@@ -122,7 +120,8 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         """
-        Optimized creation with background processing.
+        ✅ FIXED: Properly respects USE_CELERY setting.
+        TaskExecutor handles the fallback internally.
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -130,26 +129,28 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         # Perform creation
         testimonial = self.perform_create(serializer)
         
-        # Background processing using TaskExecutor
-        if app_settings.USE_CELERY:
-            try:
-                from ..tasks import send_admin_notification
-                TaskExecutor.execute(
-                    send_admin_notification,
-                    str(testimonial.pk),
-                    'new_testimonial'
-                )
-            except Exception as e:
-                log_testimonial_action(testimonial, "async_notification_failed", 
-                                    request.user, str(e))
+        # ✅ TaskExecutor automatically checks USE_CELERY internally
+        # No need for explicit if statement here
+        try:
+            from ..tasks import send_admin_notification
+            TaskExecutor.execute(
+                send_admin_notification,
+                str(testimonial.pk),
+                'new_testimonial'
+            )
+        except Exception as e:
+            log_testimonial_action(
+                testimonial, 
+                "notification_failed", 
+                request.user, 
+                str(e)
+            )
         
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
     def update(self, request, *args, **kwargs):
-        """
-        Optimized update with cache invalidation.
-        """
+        """Optimized update with cache invalidation."""
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
@@ -161,7 +162,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         
         self.perform_update(serializer)
         
-        # Invalidate cache if important fields changed using CacheService
+        # ✅ Cache invalidation respects USE_REDIS_CACHE internally
         if (serializer.instance.status != old_status or 
             serializer.instance.category_id != old_category_id):
             TestimonialCacheService.invalidate_testimonial(
@@ -173,9 +174,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     def destroy(self, request, *args, **kwargs):
-        """
-        Optimized destroy with comprehensive cleanup.
-        """
+        """Optimized destroy with comprehensive cleanup."""
         instance = self.get_object()
         testimonial_id = instance.pk
         category_id = instance.category_id
@@ -187,7 +186,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         # Perform deletion
         self.perform_destroy(instance)
         
-        # Invalidate cache using CacheService
+        # ✅ Cache invalidation respects USE_REDIS_CACHE internally
         TestimonialCacheService.invalidate_testimonial(
             testimonial_id=testimonial_id,
             category_id=category_id,
@@ -213,7 +212,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         testimonial = self.get_object()
         testimonial.approve(user=request.user)
         
-        # Invalidate cache using CacheService
+        # ✅ Cache invalidation respects USE_REDIS_CACHE internally
         TestimonialCacheService.invalidate_testimonial(
             testimonial_id=testimonial.pk,
             category_id=testimonial.category_id,
@@ -233,7 +232,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         
         testimonial.reject(reason=reason, user=request.user)
         
-        # Invalidate cache using CacheService
+        # ✅ Cache invalidation respects USE_REDIS_CACHE internally
         TestimonialCacheService.invalidate_testimonial(
             testimonial_id=testimonial.pk,
             category_id=testimonial.category_id,
@@ -251,7 +250,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         testimonial = self.get_object()
         testimonial.feature(user=request.user)
         
-        # Invalidate cache using CacheService
+        # ✅ Cache invalidation respects USE_REDIS_CACHE internally
         TestimonialCacheService.invalidate_testimonial(
             testimonial_id=testimonial.pk,
             category_id=testimonial.category_id,
@@ -264,25 +263,91 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         })
     
     @action(detail=False, methods=['get'])
+    def featured(self, request):
+        """
+        ✅ FIXED: Explicitly handles USE_REDIS_CACHE setting.
+        Get featured testimonials with appropriate caching.
+        """
+        def get_featured_data():
+            queryset = self.get_queryset().featured()[:10]
+            serializer = self.get_serializer(queryset, many=True)
+            return serializer.data
+        
+        # ✅ FIXED: Check setting explicitly for clarity
+        if app_settings.USE_REDIS_CACHE:
+            data = TestimonialCacheService.get_or_set(
+                TestimonialCacheService.get_key('FEATURED'),
+                get_featured_data,
+                timeout_type='featured'
+            )
+        else:
+            data = get_featured_data()
+        
+        return Response(data)
+    
+    @action(detail=False, methods=['get'])
     def stats(self, request):
-        """Get testimonial statistics with caching."""
+        """
+        ✅ FIXED: Explicitly handles USE_REDIS_CACHE setting.
+        Get testimonial statistics with appropriate caching.
+        """
         def get_stats_data():
             return Testimonial.objects.get_stats()
         
-        # Use CacheService for stats
-        stats = TestimonialCacheService.get_or_set(
-            TestimonialCacheService.get_key('STATS'),
-            get_stats_data,
-            timeout=app_settings.CACHE_TIMEOUT
-        )
+        # ✅ FIXED: Check setting explicitly for clarity
+        if app_settings.USE_REDIS_CACHE:
+            stats = TestimonialCacheService.get_or_set(
+                TestimonialCacheService.get_key('STATS'),
+                get_stats_data,
+                timeout_type='stats'
+            )
+        else:
+            stats = get_stats_data()
         
         return Response(stats)
+    
+    @action(detail=False, methods=['post'], permission_classes=[CanModerateTestimonial])
+    def bulk_action(self, request):
+        """Perform bulk actions on testimonials."""
+        serializer = TestimonialAdminActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        action_type = serializer.validated_data['action']
+        testimonial_ids = serializer.validated_data['testimonial_ids']
+        reason = serializer.validated_data.get('reason', '')
+        
+        testimonials = Testimonial.objects.filter(id__in=testimonial_ids)
+        count = 0
+        
+        for testimonial in testimonials:
+            if action_type == 'approve':
+                testimonial.approve(user=request.user)
+                count += 1
+            elif action_type == 'reject':
+                testimonial.reject(reason=reason, user=request.user)
+                count += 1
+            elif action_type == 'feature':
+                testimonial.feature(user=request.user)
+                count += 1
+            elif action_type == 'archive':
+                testimonial.archive(user=request.user)
+                count += 1
+        
+        # ✅ Cache invalidation respects USE_REDIS_CACHE internally
+        TestimonialCacheService.invalidate_all()
+        
+        return Response({
+            'status': 'success',
+            'count': count,
+            'message': _('Successfully performed %(action)s on %(count)d testimonials.') % {
+                'action': action_type,
+                'count': count
+            }
+        })
 
 
 class TestimonialCategoryViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint for testimonial categories.
-    """
+    """API endpoint for testimonial categories."""
     queryset = TestimonialCategory.objects.active()
     serializer_class = TestimonialCategorySerializer
     permission_classes = [IsAdminOrReadOnly]
@@ -294,24 +359,28 @@ class TestimonialCategoryViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def stats(self, request):
-        """Get category statistics with caching."""
+        """
+        ✅ FIXED: Explicitly handles USE_REDIS_CACHE setting.
+        Get category statistics with appropriate caching.
+        """
         def get_category_stats_data():
             return TestimonialCategory.objects.get_stats()
         
-        # Use CacheService
-        stats = TestimonialCacheService.get_or_set(
-            TestimonialCacheService.get_key('STATS'),
-            get_category_stats_data,
-            timeout=app_settings.CACHE_TIMEOUT
-        )
+        # ✅ FIXED: Check setting explicitly
+        if app_settings.USE_REDIS_CACHE:
+            stats = TestimonialCacheService.get_or_set(
+                TestimonialCacheService.get_key('CATEGORY_STATS', id='all'),
+                get_category_stats_data,
+                timeout_type='stats'
+            )
+        else:
+            stats = get_category_stats_data()
         
         return Response(stats)
 
 
 class TestimonialMediaViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint for testimonial media.
-    """
+    """API endpoint for testimonial media."""
     queryset = TestimonialMedia.objects.all()
     serializer_class = TestimonialMediaSerializer
     permission_classes = [IsTestimonialAuthorOrReadOnly]
@@ -335,14 +404,20 @@ class TestimonialMediaViewSet(viewsets.ModelViewSet):
         return queryset
     
     def perform_create(self, serializer):
-        """Create media with async processing."""
+        """
+        ✅ FIXED: Properly respects USE_CELERY setting.
+        Create media with async processing.
+        """
         media = serializer.save()
         
-        # Process media asynchronously using TaskExecutor
-        if app_settings.USE_CELERY:
-            try:
-                from ..tasks import process_media
-                TaskExecutor.execute(process_media, str(media.pk))
-            except Exception as e:
-                log_testimonial_action(media.testimonial, "media_processing_failed", 
-                                    self.request.user, str(e))
+        # ✅ TaskExecutor automatically checks USE_CELERY internally
+        try:
+            from ..tasks import process_media
+            TaskExecutor.execute(process_media, str(media.pk))
+        except Exception as e:
+            log_testimonial_action(
+                media.testimonial, 
+                "media_processing_failed", 
+                self.request.user, 
+                str(e)
+            )

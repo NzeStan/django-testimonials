@@ -372,19 +372,77 @@ class AppSettings:
             "redis://localhost:6379/1"
         )
     
+    # ====== CACHE TIMEOUT SETTINGS ======
+    
     @property
     def CACHE_TIMEOUT(self):
         """
         Default cache timeout in seconds.
+        Used for general purpose caching.
         Default is 900 seconds (15 minutes).
+        
+        Override in settings.py:
+        TESTIMONIALS_CACHE_TIMEOUT = 1800  # 30 minutes
         """
         return getattr(settings, "TESTIMONIALS_CACHE_TIMEOUT", 900)
+    
+    @property
+    def CACHE_TIMEOUT_SHORT(self):
+        """
+        Short cache timeout for volatile/frequently changing data.
+        Used for dashboard metrics, pending counts, etc.
+        Default is 300 seconds (5 minutes).
+        
+        Override in settings.py:
+        TESTIMONIALS_CACHE_TIMEOUT_SHORT = 180  # 3 minutes
+        """
+        return getattr(settings, "TESTIMONIALS_CACHE_TIMEOUT_SHORT", 300)
+    
+    @property
+    def CACHE_TIMEOUT_LONG(self):
+        """
+        Long cache timeout for stable/rarely changing data.
+        Used for published testimonials, categories, etc.
+        Default is 3600 seconds (1 hour).
+        
+        Override in settings.py:
+        TESTIMONIALS_CACHE_TIMEOUT_LONG = 7200  # 2 hours
+        """
+        return getattr(settings, "TESTIMONIALS_CACHE_TIMEOUT_LONG", 3600)
+    
+    @property
+    def CACHE_TIMEOUT_STATS(self):
+        """
+        Cache timeout specifically for statistics and analytics.
+        Used for stats endpoints, dashboard analytics, etc.
+        Default is 1800 seconds (30 minutes).
+        
+        Override in settings.py:
+        TESTIMONIALS_CACHE_TIMEOUT_STATS = 900  # 15 minutes
+        """
+        return getattr(settings, "TESTIMONIALS_CACHE_TIMEOUT_STATS", 1800)
+    
+    @property
+    def CACHE_TIMEOUT_FEATURED(self):
+        """
+        Cache timeout for featured testimonials list.
+        Featured testimonials change less frequently.
+        Default is 7200 seconds (2 hours).
+        
+        Override in settings.py:
+        TESTIMONIALS_CACHE_TIMEOUT_FEATURED = 3600  # 1 hour
+        """
+        return getattr(settings, "TESTIMONIALS_CACHE_TIMEOUT_FEATURED", 7200)
     
     @property
     def CACHE_KEY_PREFIX(self):
         """
         Prefix for all cache keys.
+        Useful for avoiding key collisions in shared Redis instances.
         Default is 'testimonials'.
+        
+        Override in settings.py:
+        TESTIMONIALS_CACHE_KEY_PREFIX = 'myapp_testimonials'
         """
         return getattr(settings, "TESTIMONIALS_CACHE_KEY_PREFIX", "testimonials")
 

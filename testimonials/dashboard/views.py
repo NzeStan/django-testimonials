@@ -1,4 +1,4 @@
-# testimonials/dashboard/views.py
+# testimonials/dashboard/views.py - WITH SEMANTIC TIMEOUTS
 
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import render
@@ -10,13 +10,14 @@ from datetime import timedelta
 from ..models import Testimonial, TestimonialCategory, TestimonialMedia
 from ..constants import TestimonialStatus, TestimonialSource, TestimonialMediaType
 from ..conf import app_settings
-from ..utils import get_cache_key, cache_get_or_set
+from ..services import TestimonialCacheService
 
 
 @staff_member_required
 def dashboard_overview(request):
     """
     Main dashboard overview with key metrics and charts.
+    Uses short timeout for volatile dashboard data.
     """
     
     def get_dashboard_data():
@@ -128,9 +129,13 @@ def dashboard_overview(request):
             'daily_trend': daily_trend,
         }
     
+    # Use semantic helper method for dashboard data (volatile)
     if app_settings.USE_REDIS_CACHE:
-        cache_key = get_cache_key('dashboard_overview')
-        data = cache_get_or_set(cache_key, get_dashboard_data, timeout=300)  # 5 min cache
+        data = TestimonialCacheService.get_or_set(
+            TestimonialCacheService.get_key('DASHBOARD_OVERVIEW'),
+            get_dashboard_data,
+            timeout_type='volatile'  # ✅ Uses CACHE_TIMEOUT_SHORT (5 minutes)
+        )
     else:
         data = get_dashboard_data()
     
@@ -146,6 +151,7 @@ def dashboard_overview(request):
 def dashboard_analytics(request):
     """
     Advanced analytics view with detailed insights.
+    Uses stats timeout for analytics data.
     """
     
     def get_analytics_data():
@@ -158,8 +164,11 @@ def dashboard_analytics(request):
         }
     
     if app_settings.USE_REDIS_CACHE:
-        cache_key = get_cache_key('dashboard_analytics')
-        data = cache_get_or_set(cache_key, get_analytics_data, timeout=600)  # 10 min cache
+        data = TestimonialCacheService.get_or_set(
+            TestimonialCacheService.get_key('DASHBOARD_ANALYTICS'),
+            get_analytics_data,
+            timeout_type='stats'  # ✅ Uses CACHE_TIMEOUT_STATS (30 minutes)
+        )
     else:
         data = get_analytics_data()
     
@@ -175,6 +184,7 @@ def dashboard_analytics(request):
 def dashboard_moderation(request):
     """
     Moderation queue view for quick testimonial review.
+    No caching for real-time moderation data.
     """
     
     pending = Testimonial.objects.filter(
@@ -194,21 +204,32 @@ def dashboard_moderation(request):
 def dashboard_categories(request):
     """
     Category management and statistics.
+    Uses stable timeout for category data.
     """
     
-    categories = TestimonialCategory.objects.annotate(
-        total=Count('testimonials'),
-        pending=Count('testimonials', filter=Q(testimonials__status=TestimonialStatus.PENDING)),
-        approved=Count('testimonials', filter=Q(testimonials__status__in=[
-            TestimonialStatus.APPROVED, TestimonialStatus.FEATURED
-        ])),
-        avg_rating=Avg('testimonials__rating')
-    ).order_by('-total')
+    def get_categories_data():
+        return TestimonialCategory.objects.annotate(
+            total=Count('testimonials'),
+            pending=Count('testimonials', filter=Q(testimonials__status=TestimonialStatus.PENDING)),
+            approved=Count('testimonials', filter=Q(testimonials__status__in=[
+                TestimonialStatus.APPROVED, TestimonialStatus.FEATURED
+            ])),
+            avg_rating=Avg('testimonials__rating')
+        ).order_by('-total')
+    
+    if app_settings.USE_REDIS_CACHE:
+        categories = TestimonialCacheService.get_or_set(
+            TestimonialCacheService.get_key('CATEGORY_STATS', id='dashboard'),
+            get_categories_data,
+            timeout_type='stable'  # ✅ Uses CACHE_TIMEOUT_LONG (1 hour)
+        )
+    else:
+        categories = get_categories_data()
     
     context = {
         'title': _('Categories'),
         'categories': categories,
-        'total_categories': categories.count(),
+        'total_categories': len(categories) if hasattr(categories, '__len__') else categories.count(),
     }
     
     return render(request, 'testimonials/dashboard/categories.html', context)
