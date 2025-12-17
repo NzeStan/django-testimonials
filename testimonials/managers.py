@@ -18,6 +18,7 @@ from .mixins import (
     TimePeriodFilterMixin,
     BulkOperationMixin
 )
+from .utils import get_search_query
 
 
 # === QUERYSETS ===

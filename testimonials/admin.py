@@ -69,7 +69,7 @@ class TestimonialAdmin(admin.ModelAdmin):
     Admin for testimonials.
     """
     form = TestimonialAdminForm
-    list_display = ('get_avatar_thumbnail','author_name', 'company', 'get_rating_stars', 'status_badge', 'category', 'created_at_formatted', 'has_media')
+    list_display = ('id','get_avatar_thumbnail','author_name', 'company', 'get_rating_stars', 'status_badge', 'category', 'created_at_formatted', 'has_media')
     list_filter = ('status', 'rating', 'category', 'created_at', 'is_anonymous', 'is_verified')
     search_fields = ('author_name', 'author_email', 'company', 'content')
     readonly_fields = ('created_at', 'updated_at', 'approved_at', 'ip_address', 'get_avatar_preview')
