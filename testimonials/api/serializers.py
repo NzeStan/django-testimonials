@@ -111,16 +111,16 @@ class TestimonialUserSerializer(ChoiceFieldDisplayMixin, serializers.ModelSerial
             'is_verified',  # Read-only (admin sets this)
             'media', 'slug', 'website', 'social_media',
             'response',  # Read-only (admin responses)
-            'created_at', 'updated_at', 'approved_at', 'author_display',
+            'created_at', 'updated_at', 'approved_at', 'author_display', 'display_order'
         ]
         
         # 🔒 CRITICAL: These fields are READ-ONLY for regular users
         read_only_fields = [
-            'id', 'status', 'status_display', 'source_display', 
+            'id', 'status', 'status_display', 'source', 'source_display', 
             'media', 'slug', 'created_at', 'updated_at', 'approved_at', 
             'is_verified', 'author_display',
             'is_anonymous',  # 🔒 Can't change after creation
-            'response',  # 🔒 Admin-only field
+            'response','display_order'  # 🔒 Admin-only field
         ]
     
     def get_status_display(self, obj) -> str:
@@ -146,7 +146,7 @@ class TestimonialUserSerializer(ChoiceFieldDisplayMixin, serializers.ModelSerial
         admin_only_fields = [
             'status', 'is_verified', 'is_anonymous', 'response',
             'response_at', 'response_by', 'approved_at', 'approved_by',
-            'rejection_reason', 'display_order'
+            'rejection_reason', 'display_order', 'source'
         ]
         
         for field in admin_only_fields:

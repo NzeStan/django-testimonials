@@ -4,7 +4,7 @@ from django.db import models
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import MinValueValidator, MaxValueValidator
-from django.db.models import  Q, Index
+from django.db.models import Q, Index
 import string
 from phonenumber_field.modelfields import PhoneNumberField
 from django.utils import timezone

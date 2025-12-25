@@ -151,12 +151,15 @@ class AnonymousUserValidationMixin:
             allow_anonymous: Whether policy allows anonymous
             
         Raises:
-            serializers.ValidationError: If policy violated
+            ValidationError: If policy violated (compatible with forms and serializers)
         """
         if is_anonymous and not allow_anonymous:
-            raise serializers.ValidationError({
-                'is_anonymous': _("Anonymous testimonials are not allowed.")
-            })
+            # Use Django's ValidationError which works in both contexts
+            from django.core.exceptions import ValidationError
+            raise ValidationError(
+                _("Anonymous testimonials are not allowed."),
+                code='anonymous_not_allowed'
+            )
 
 
 class ChoiceFieldDisplayMixin:
