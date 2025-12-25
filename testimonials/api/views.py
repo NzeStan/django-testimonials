@@ -23,11 +23,14 @@ from ..utils import log_testimonial_action
 
 from .serializers import (
     TestimonialSerializer,
-    TestimonialDetailSerializer,
+    TestimonialAdminDetailSerializer,
+    TestimonialUserDetailSerializer,
     TestimonialCreateSerializer,
     TestimonialCategorySerializer,
     TestimonialMediaSerializer,
-    TestimonialAdminActionSerializer
+    TestimonialAdminActionSerializer,
+    TestimonialAdminSerializer,
+    TestimonialUserSerializer,
 )
 from .permissions import (
     IsAdminOrReadOnly,
@@ -89,14 +92,35 @@ class TestimonialViewSet(viewsets.ModelViewSet):
             return queryset.published()
     
     def get_serializer_class(self):
-        """Return appropriate serializer based on action."""
+        """
+        🔒 CRITICAL SECURITY FIX:
+        Return appropriate serializer based on user role and action.
+        Now properly handles DETAIL vs LIST views.
+        """
+        request = self.request
+        user = getattr(request, 'user', None)
+        is_admin = user and user.is_authenticated and (user.is_staff or user.is_superuser)
+        
+        # Creation uses dedicated serializer
         if self.action == 'create':
             return TestimonialCreateSerializer
-        elif self.action in ['retrieve', 'update', 'partial_update']:
-            return TestimonialDetailSerializer
-        elif self.action in ['moderate', 'bulk_action']:
+        
+        # Admin actions
+        if self.action in ['moderate', 'bulk_action']:
             return TestimonialAdminActionSerializer
-        return TestimonialSerializer
+        
+        # 🔒 DETAIL VIEW (retrieve, update, partial_update)
+        if self.action in ['retrieve', 'update', 'partial_update']:
+            if is_admin:
+                return TestimonialAdminDetailSerializer  # ✅ Shows ip_address, extra_data
+            else:
+                return TestimonialUserDetailSerializer  # ✅ Shows response_at, but NOT ip/rejection_reason
+        
+        # 🔒 LIST VIEW (list)
+        if is_admin:
+            return TestimonialAdminSerializer  # Full fields
+        
+        return TestimonialUserSerializer  # Limited fields
     
     def get_permissions(self):
         """Dynamic permissions based on action."""
@@ -344,6 +368,54 @@ class TestimonialViewSet(viewsets.ModelViewSet):
                 'count': count
             }
         })
+    
+    @action(detail=True, methods=['delete'], permission_classes=[permissions.IsAuthenticatedOrReadOnly])
+    def remove_avatar(self, request, pk=None):
+        """
+        🆕 NEW ENDPOINT: Remove avatar from testimonial.
+        Users can remove their own avatar, admins can remove any.
+        """
+        testimonial = self.get_object()
+        user = request.user
+        
+        # 🔒 Security: Users can only remove their own avatar
+        if not (user.is_staff or user.is_superuser):
+            if testimonial.author != user:
+                return Response(
+                    {'detail': _('You can only remove your own avatar.')},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        # Remove the avatar
+        if testimonial.avatar:
+            # Delete the file
+            try:
+                testimonial.avatar.delete(save=False)
+            except Exception as e:
+                logger.warning(f"Failed to delete avatar file: {e}")
+            
+            # Clear the field
+            testimonial.avatar = None
+            testimonial.save(update_fields=['avatar', 'updated_at'])
+            
+            # Invalidate cache
+            TestimonialCacheService.invalidate_testimonial(
+                testimonial_id=testimonial.pk,
+                category_id=testimonial.category_id,
+                user_id=testimonial.author_id
+            )
+            
+            log_testimonial_action(testimonial, "remove_avatar", user)
+            
+            return Response({
+                'status': 'success',
+                'message': _('Avatar removed successfully.')
+            })
+        else:
+            return Response(
+                {'detail': _('No avatar to remove.')},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class TestimonialCategoryViewSet(viewsets.ModelViewSet):

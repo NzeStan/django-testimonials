@@ -22,7 +22,7 @@ from ..mixins import (
 
 class TestimonialMediaSerializer(FileValidationMixin, ChoiceFieldDisplayMixin, serializers.ModelSerializer):
     """
-    Refactored serializer for TestimonialMedia with centralized validation.
+    Serializer for TestimonialMedia with centralized validation.
     """
     
     media_type_display = serializers.SerializerMethodField()
@@ -45,10 +45,7 @@ class TestimonialMediaSerializer(FileValidationMixin, ChoiceFieldDisplayMixin, s
         return obj.file.url if obj.file else None
     
     def validate_file(self, file_obj):
-        """
-        Validate file using centralized mixin method.
-        Much cleaner than 50+ lines of duplicate code!
-        """
+        """Validate file using centralized mixin method."""
         return self.validate_uploaded_file(
             file_obj,
             app_settings.ALLOWED_FILE_EXTENSIONS,
@@ -79,6 +76,143 @@ class TestimonialCategorySerializer(serializers.ModelSerializer):
             status__in=[TestimonialStatus.APPROVED, TestimonialStatus.FEATURED]
         ).count()
 
+
+class TestimonialUserSerializer(ChoiceFieldDisplayMixin, serializers.ModelSerializer):
+    """
+    🔒 SECURED: Serializer for regular users - LIMITED FIELDS ONLY.
+    Users can ONLY edit their own basic info, NOT admin fields.
+    """
+    
+    category = TestimonialCategorySerializer(read_only=True)
+    category_id = serializers.PrimaryKeyRelatedField(
+        queryset=TestimonialCategory.objects.filter(is_active=True),
+        source='category',
+        required=False,
+        allow_null=True,
+        write_only=True
+    )
+    
+    media = TestimonialMediaSerializer(many=True, read_only=True)
+    
+    # Display fields
+    status_display = serializers.SerializerMethodField()
+    source_display = serializers.SerializerMethodField()
+    author_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Testimonial
+        fields = [
+            # User can READ these
+            'id', 'author_name', 'author_email', 'author_phone', 'author_title',
+            'company', 'location', 'avatar', 'title', 'content', 'rating',
+            'category', 'category_id', 'source', 'source_display', 
+            'status', 'status_display',  # Read-only for users
+            'is_anonymous',  # Read-only after creation
+            'is_verified',  # Read-only (admin sets this)
+            'media', 'slug', 'website', 'social_media',
+            'response',  # Read-only (admin responses)
+            'created_at', 'updated_at', 'approved_at', 'author_display',
+        ]
+        
+        # 🔒 CRITICAL: These fields are READ-ONLY for regular users
+        read_only_fields = [
+            'id', 'status', 'status_display', 'source_display', 
+            'media', 'slug', 'created_at', 'updated_at', 'approved_at', 
+            'is_verified', 'author_display',
+            'is_anonymous',  # 🔒 Can't change after creation
+            'response',  # 🔒 Admin-only field
+        ]
+    
+    def get_status_display(self, obj) -> str:
+        return self.get_display_value(obj, 'status')
+    
+    def get_source_display(self, obj) -> str:
+        return self.get_display_value(obj, 'source')
+    
+    def get_author_display(self, obj) -> str:
+        return obj.author_display
+    
+    def update(self, instance, validated_data):
+        """
+        🔒 SECURED UPDATE: Users can ONLY update their basic info.
+        Admin fields are BLOCKED even if submitted.
+        """
+        # Get the request user
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        
+        # 🔒 CRITICAL: Remove any admin-only fields from validated_data
+        # This prevents users from sneaking these fields into the request
+        admin_only_fields = [
+            'status', 'is_verified', 'is_anonymous', 'response',
+            'response_at', 'response_by', 'approved_at', 'approved_by',
+            'rejection_reason', 'display_order'
+        ]
+        
+        for field in admin_only_fields:
+            validated_data.pop(field, None)
+        
+        # 🔒 CRITICAL: Users can ONLY edit their OWN testimonials
+        if user and user.is_authenticated:
+            if instance.author != user and not (user.is_staff or user.is_superuser):
+                raise serializers.ValidationError(
+                    _("You can only edit your own testimonials.")
+                )
+        
+        # Perform the update with cleaned data
+        return super().update(instance, validated_data)
+
+class TestimonialAdminSerializer(ChoiceFieldDisplayMixin, serializers.ModelSerializer):
+    """
+    🔓 ADMIN SERIALIZER: Full access to all fields including admin-only ones.
+    Only used when request.user.is_staff = True.
+    """
+    
+    category = TestimonialCategorySerializer(read_only=True)
+    category_id = serializers.PrimaryKeyRelatedField(
+        queryset=TestimonialCategory.objects.filter(is_active=True),
+        source='category',
+        required=False,
+        allow_null=True,
+        write_only=True
+    )
+    
+    media = TestimonialMediaSerializer(many=True, read_only=True)
+    
+    # Display fields
+    status_display = serializers.SerializerMethodField()
+    source_display = serializers.SerializerMethodField()
+    author_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Testimonial
+        fields = [
+            # All fields - admins have full access
+            'id', 'author_name', 'author_email', 'author_phone', 'author_title',
+            'company', 'location', 'avatar', 'title', 'content', 'rating',
+            'category', 'category_id', 'source', 'source_display', 
+            'status', 'status_display',
+            'is_anonymous', 'is_verified', 'display_order',
+            'media', 'slug', 'website', 'social_media',
+            'response', 'response_at', 'response_by',  # Admin can edit
+            'approved_at', 'approved_by', 'rejection_reason',
+            'created_at', 'updated_at', 'author_display',
+        ]
+        
+        # Minimal read-only fields for admins
+        read_only_fields = [
+            'id', 'status_display', 'source_display', 'media', 'slug',
+            'created_at', 'updated_at', 'author_display',
+        ]
+    
+    def get_status_display(self, obj) -> str:
+        return self.get_display_value(obj, 'status')
+    
+    def get_source_display(self, obj) -> str:
+        return self.get_display_value(obj, 'source')
+    
+    def get_author_display(self, obj) -> str:
+        return obj.author_display
 
 class TestimonialSerializer(ChoiceFieldDisplayMixin, serializers.ModelSerializer):
     """
@@ -128,24 +262,45 @@ class TestimonialSerializer(ChoiceFieldDisplayMixin, serializers.ModelSerializer
         return obj.author_display
 
 
-class TestimonialDetailSerializer(TestimonialSerializer):
+class TestimonialUserDetailSerializer(TestimonialUserSerializer):
     """
-    Extended serializer with more details for single object retrieval.
+    🔒 SECURED: Detail serializer for users.
+    Shows slightly more fields than list, but NO sensitive admin data.
     """
     
-    class Meta(TestimonialSerializer.Meta):
-        fields = TestimonialSerializer.Meta.fields + [
-            'ip_address', 'rejection_reason', 'response_at', 'response_by',
+    class Meta(TestimonialUserSerializer.Meta):
+        # Add response_at (when company responded) - but NOT response_by (who responded)
+        fields = TestimonialUserSerializer.Meta.fields + [
+            'response_at',  # Users can see WHEN response was added
         ]
-        read_only_fields = TestimonialSerializer.Meta.read_only_fields + [
-            'ip_address', 'rejection_reason', 'response_at', 'response_by',
+        
+        read_only_fields = TestimonialUserSerializer.Meta.read_only_fields + [
+            'response_at',
         ]
+
+class TestimonialAdminDetailSerializer(TestimonialAdminSerializer):
+    """
+    🔓 ADMIN DETAIL SERIALIZER: Shows EVERYTHING including sensitive data.
+    Used for detail/retrieve views when user is admin.
+    """
+    
+    class Meta(TestimonialAdminSerializer.Meta):
+        # Add sensitive fields that should ONLY appear in detail view
+        fields = TestimonialAdminSerializer.Meta.fields + [
+            'ip_address',  # 🔒 Sensitive - only for admins in detail view
+            'extra_data',  # 🔒 Internal metadata
+        ]
+        
+        read_only_fields = TestimonialAdminSerializer.Meta.read_only_fields + [
+            'ip_address',
+        ]
+
 
 
 class TestimonialCreateSerializer(AnonymousUserValidationMixin, serializers.ModelSerializer):
     """
-    Refactored serializer for creating testimonials.
-    Uses AnonymousUserValidationMixin for cleaner validation logic.
+    Serializer for creating testimonials.
+    Sets is_anonymous at creation time only.
     """
     
     class Meta:
@@ -157,10 +312,7 @@ class TestimonialCreateSerializer(AnonymousUserValidationMixin, serializers.Mode
         ]
     
     def validate(self, data):
-        """
-        Cleaner validation using extracted methods from mixin.
-        Much more readable than 80+ lines of nested conditions!
-        """
+        """Cleaner validation using extracted methods from mixin."""
         data = self._set_authentication_defaults(data)
         data = self._handle_submission_type(data)
         return data
@@ -194,10 +346,8 @@ class TestimonialCreateSerializer(AnonymousUserValidationMixin, serializers.Mode
         self.validate_anonymous_policy(is_anonymous, app_settings.ALLOW_ANONYMOUS)
         
         if is_anonymous:
-            # Use mixin method for anonymous handling
             data = self.ensure_anonymous_display_name(data)
         else:
-            # Use mixin method for authenticated handling
             request = self.context.get('request')
             user = getattr(request, 'user', None)
             data = self.prefill_author_from_user(data, user)
@@ -224,6 +374,7 @@ class TestimonialCreateSerializer(AnonymousUserValidationMixin, serializers.Mode
         return testimonial
 
 
+
 class TestimonialAdminActionSerializer(serializers.Serializer):
     """Serializer for admin actions on testimonials."""
     
@@ -247,7 +398,7 @@ class TestimonialAdminActionSerializer(serializers.Serializer):
         if not value:
             raise serializers.ValidationError(_("At least one testimonial ID required."))
         
-        # Check if testimonials exist
+        from ..models import Testimonial
         existing_count = Testimonial.objects.filter(id__in=value).count()
         if existing_count != len(value):
             raise serializers.ValidationError(
