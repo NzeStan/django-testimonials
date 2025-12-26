@@ -8,7 +8,7 @@ from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
 
 from ..models import Testimonial, TestimonialCategory, TestimonialMedia
-from ..constants import TestimonialStatus, TestimonialSource
+from ..constants import TestimonialStatus, TestimonialSource, TestimonialMediaType
 from ..conf import app_settings
 from ..utils import log_testimonial_action
 
@@ -20,41 +20,110 @@ from ..mixins import (
 )
 
 
-class TestimonialMediaSerializer(FileValidationMixin, ChoiceFieldDisplayMixin, serializers.ModelSerializer):
+class TestimonialMediaSerializer(
+    FileValidationMixin,
+    ChoiceFieldDisplayMixin,
+    serializers.ModelSerializer
+):
     """
-    Serializer for TestimonialMedia with centralized validation.
+    Serializer for testimonial media files (secure + validated).
     """
-    
+
     media_type_display = serializers.SerializerMethodField()
     file_url = serializers.SerializerMethodField()
-    
+    thumbnails = serializers.SerializerMethodField()
+
     class Meta:
         model = TestimonialMedia
         fields = [
-            'id', 'file', 'testimonial', 'file_url', 'media_type', 'media_type_display', 
-            'title', 'description', 'is_primary', 'order', 'created_at'
+            'id',
+            'testimonial',
+            'file',
+            'file_url',
+            'media_type',
+            'media_type_display',
+            'title',
+            'description',
+            'alt_text',
+            'is_primary',
+            'order',
+            'thumbnails',
+            'created_at',
+            'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'media_type_display', 'file_url']
-    
-    def get_media_type_display(self, obj) -> str:
-        """Get display value for media_type using mixin."""
+        read_only_fields = [
+            'id',
+            'file_url',
+            'media_type_display',
+            'thumbnails',
+            'created_at',
+            'updated_at',
+        ]
+
+    # --------------------
+    # Display helpers
+    # --------------------
+
+    def get_media_type_display(self, obj):
         return self.get_display_value(obj, 'media_type')
-    
-    def get_file_url(self, obj) -> str:
-        """Get the URL for the file."""
-        return obj.file.url if obj.file else None
-    
+
+    def get_file_url(self, obj):
+        request = self.context.get('request')
+        if obj.file and hasattr(obj.file, 'url'):
+            return request.build_absolute_uri(obj.file.url) if request else obj.file.url
+        return None
+
+    def get_thumbnails(self, obj):
+        if obj.media_type != TestimonialMediaType.IMAGE:
+            return None
+
+        request = self.context.get('request')
+        thumbnails = {}
+
+        for size in ['small', 'medium', 'large']:
+            thumbnail = getattr(obj, f'{size}_thumbnail', None)
+            if thumbnail and hasattr(thumbnail, 'url'):
+                thumbnails[size] = (
+                    request.build_absolute_uri(thumbnail.url)
+                    if request else thumbnail.url
+                )
+
+        return thumbnails or None
+
+    # --------------------
+    # File validation
+    # --------------------
+
     def validate_file(self, file_obj):
-        """Validate file using centralized mixin method."""
         return self.validate_uploaded_file(
             file_obj,
             app_settings.ALLOWED_FILE_EXTENSIONS,
             app_settings.MAX_FILE_SIZE
         )
-    
-    def create(self, validated_data):
-        """Create media with auto-detected media type."""
-        return super().create(validated_data)
+
+    # --------------------
+    # Security validation
+    # --------------------
+
+    def validate(self, data):
+        testimonial = data.get('testimonial')
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+
+        if not user or not user.is_authenticated:
+            raise serializers.ValidationError({
+                'testimonial': _("Authentication required to add media.")
+            })
+
+        if user.is_staff or user.is_superuser:
+            return data
+
+        if testimonial.author != user:
+            raise serializers.ValidationError({
+                'testimonial': _("You can only add media to your own testimonials.")
+            })
+
+        return data
 
 
 class TestimonialCategorySerializer(serializers.ModelSerializer):
@@ -303,6 +372,13 @@ class TestimonialCreateSerializer(AnonymousUserValidationMixin, serializers.Mode
     Sets is_anonymous at creation time only.
     """
     
+    # ✅ FIX: Add explicit category validation
+    category = serializers.PrimaryKeyRelatedField(
+        queryset=TestimonialCategory.objects.filter(is_active=True),
+        required=False,
+        allow_null=True
+    )
+    
     class Meta:
         model = Testimonial
         fields = [
@@ -310,6 +386,16 @@ class TestimonialCreateSerializer(AnonymousUserValidationMixin, serializers.Mode
             'company', 'location', 'avatar', 'title', 'content', 'rating',
             'category', 'source', 'is_anonymous', 'website', 'social_media',
         ]
+    
+    def validate_category(self, value):
+        """
+        ✅ FIX: Explicitly validate that category is active.
+        """
+        if value and not value.is_active:
+            raise serializers.ValidationError(
+                _("Cannot use inactive category. Please select an active category.")
+            )
+        return value
     
     def validate(self, data):
         """Cleaner validation using extracted methods from mixin."""
@@ -375,8 +461,12 @@ class TestimonialCreateSerializer(AnonymousUserValidationMixin, serializers.Mode
 
 
 
+
 class TestimonialAdminActionSerializer(serializers.Serializer):
-    """Serializer for admin actions on testimonials."""
+    """
+    ✅ FIXED: Serializer for admin actions on testimonials.
+    Now properly validates rejection reason requirement.
+    """
     
     action = serializers.ChoiceField(
         choices=['approve', 'reject', 'feature', 'archive'],
@@ -390,7 +480,7 @@ class TestimonialAdminActionSerializer(serializers.Serializer):
     reason = serializers.CharField(
         required=False,
         allow_blank=True,
-        help_text=_("Optional reason for rejection")
+        help_text=_("Reason for rejection (required when rejecting)")
     )
     
     def validate_testimonial_ids(self, value):
@@ -408,9 +498,15 @@ class TestimonialAdminActionSerializer(serializers.Serializer):
         return value
     
     def validate(self, data):
-        """Validate that reason is provided for rejection."""
-        if data.get('action') == 'reject' and not data.get('reason'):
+        """
+        ✅ FIX: Make reason required for rejection action.
+        """
+        action = data.get('action')
+        reason = data.get('reason', '').strip()
+        
+        if action == 'reject' and not reason:
             raise serializers.ValidationError({
                 'reason': _("Reason is required when rejecting testimonials.")
             })
+        
         return data

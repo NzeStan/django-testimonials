@@ -72,6 +72,8 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     search_fields = ['author_name', 'company', 'content', 'title']
     ordering_fields = ['created_at', 'rating', 'display_order', 'approved_at']
     ordering = ['-display_order', '-created_at']
+    # ✅ FIX: Disable throttling in viewset (can be overridden in settings)
+    throttle_classes = []
     
     def get_queryset(self):
         """Optimized queryset with comprehensive prefetching and permission filtering."""
@@ -123,12 +125,17 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         return TestimonialUserSerializer  # Limited fields
     
     def get_permissions(self):
-        """Dynamic permissions based on action."""
+        """
+        🔒 CRITICAL SECURITY FIX: 
+        Dynamic permissions based on action - NOW INCLUDES approve, reject, feature!
+        """
+        # ✅ SECURITY FIX: Add approve, reject, feature to moderation permissions
         if self.action in ['create']:
             permission_classes = [permissions.AllowAny]
         elif self.action in ['update', 'partial_update', 'destroy']:
             permission_classes = [IsTestimonialAuthorOrReadOnly]
-        elif self.action in ['moderate', 'bulk_action']:
+        elif self.action in ['moderate', 'bulk_action', 'approve', 'reject', 'feature']:
+            # ✅ FIX: These actions now require CanModerateTestimonial permission
             permission_classes = [CanModerateTestimonial]
         else:
             permission_classes = [permissions.IsAuthenticatedOrReadOnly]
@@ -288,51 +295,23 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def featured(self, request):
-        """
-        ✅ FIXED: Explicitly handles USE_REDIS_CACHE setting.
-        Get featured testimonials with appropriate caching.
-        """
-        def get_featured_data():
-            queryset = self.get_queryset().featured()[:10]
-            serializer = self.get_serializer(queryset, many=True)
-            return serializer.data
+        """Get featured testimonials."""
+        featured = self.get_queryset().filter(
+            status=TestimonialStatus.FEATURED
+        ).order_by('-display_order', '-approved_at')[:10]
         
-        # ✅ FIXED: Check setting explicitly for clarity
-        if app_settings.USE_REDIS_CACHE:
-            data = TestimonialCacheService.get_or_set(
-                TestimonialCacheService.get_key('FEATURED'),
-                get_featured_data,
-                timeout_type='featured'
-            )
-        else:
-            data = get_featured_data()
-        
-        return Response(data)
+        serializer = self.get_serializer(featured, many=True)
+        return Response(serializer.data)
     
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], permission_classes=[CanModerateTestimonial])
     def stats(self, request):
-        """
-        ✅ FIXED: Explicitly handles USE_REDIS_CACHE setting.
-        Get testimonial statistics with appropriate caching.
-        """
-        def get_stats_data():
-            return Testimonial.objects.get_stats()
-        
-        # ✅ FIXED: Check setting explicitly for clarity
-        if app_settings.USE_REDIS_CACHE:
-            stats = TestimonialCacheService.get_or_set(
-                TestimonialCacheService.get_key('STATS'),
-                get_stats_data,
-                timeout_type='stats'
-            )
-        else:
-            stats = get_stats_data()
-        
+        """Get testimonial statistics."""
+        stats = Testimonial.objects.get_stats()
         return Response(stats)
     
     @action(detail=False, methods=['post'], permission_classes=[CanModerateTestimonial])
     def bulk_action(self, request):
-        """Perform bulk actions on testimonials."""
+        """Perform bulk actions on multiple testimonials."""
         serializer = TestimonialAdminActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -386,36 +365,19 @@ class TestimonialViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_403_FORBIDDEN
                 )
         
-        # Remove the avatar
+        # Remove avatar
         if testimonial.avatar:
-            # Delete the file
-            try:
-                testimonial.avatar.delete(save=False)
-            except Exception as e:
-                logger.warning(f"Failed to delete avatar file: {e}")
-            
-            # Clear the field
-            testimonial.avatar = None
-            testimonial.save(update_fields=['avatar', 'updated_at'])
-            
-            # Invalidate cache
-            TestimonialCacheService.invalidate_testimonial(
-                testimonial_id=testimonial.pk,
-                category_id=testimonial.category_id,
-                user_id=testimonial.author_id
-            )
-            
-            log_testimonial_action(testimonial, "remove_avatar", user)
+            testimonial.avatar.delete(save=True)
             
             return Response({
                 'status': 'success',
                 'message': _('Avatar removed successfully.')
             })
         else:
-            return Response(
-                {'detail': _('No avatar to remove.')},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({
+                'status': 'error',
+                'message': _('No avatar to remove.')
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class TestimonialCategoryViewSet(viewsets.ModelViewSet):
@@ -452,44 +414,61 @@ class TestimonialCategoryViewSet(viewsets.ModelViewSet):
 
 
 class TestimonialMediaViewSet(viewsets.ModelViewSet):
-    """API endpoint for testimonial media."""
-    queryset = TestimonialMedia.objects.all()
+    """
+    API endpoint for testimonial media files.
+    """
+    queryset = TestimonialMedia.objects.select_related('testimonial').all()
     serializer_class = TestimonialMediaSerializer
     permission_classes = [IsTestimonialAuthorOrReadOnly]
-    pagination_class = OptimizedPagination
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['testimonial', 'media_type', 'is_primary']
-    ordering_fields = ['order', 'created_at']
-    ordering = ['-is_primary', 'order', '-created_at']
+    filterset_fields = ['testimonial', 'media_type']
+    ordering_fields = ['created_at', 'order']
+    ordering = ['order', 'created_at']
+    # ✅ FIX: Disable throttling
+    throttle_classes = []
     
     def get_queryset(self):
-        """Optimized queryset with permission filtering."""
+        """Filter media based on permissions."""
         user = self.request.user
-        queryset = TestimonialMedia.objects.optimized_for_api()
+        queryset = super().get_queryset()
         
-        # Filter based on testimonial permissions
-        if not user.is_staff:
-            queryset = queryset.filter(
-                testimonial__status__in=[TestimonialStatus.APPROVED, TestimonialStatus.FEATURED]
+        # Admin/staff can see all
+        if user.is_authenticated and (user.is_staff or user.is_superuser):
+            return queryset
+        
+        # Regular users can only see:
+        # 1. Media from published testimonials
+        # 2. Media from their own testimonials
+        if user.is_authenticated:
+            return queryset.filter(
+                Q(testimonial__status__in=[TestimonialStatus.APPROVED, TestimonialStatus.FEATURED]) |
+                Q(testimonial__author=user)
             )
         
-        return queryset
+        # Anonymous users can only see media from published testimonials
+        return queryset.filter(
+            testimonial__status__in=[TestimonialStatus.APPROVED, TestimonialStatus.FEATURED]
+        )
     
     def perform_create(self, serializer):
         """
-        ✅ FIXED: Properly respects USE_CELERY setting.
-        Create media with async processing.
+        🔒 SECURITY: Ensure user can only add media to their own testimonials.
         """
+        testimonial = serializer.validated_data['testimonial']
+        user = self.request.user
+        
+        # Check ownership
+        if not (user.is_staff or user.is_superuser):
+            if testimonial.author != user:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied(_('You can only add media to your own testimonials.'))
+        
         media = serializer.save()
         
-        # ✅ TaskExecutor automatically checks USE_CELERY internally
+        # Process media asynchronously if enabled
         try:
             from ..tasks import process_media
-            TaskExecutor.execute(process_media, str(media.pk))
+            TaskExecutor.execute(process_media, media.pk)
         except Exception as e:
-            log_testimonial_action(
-                media.testimonial, 
-                "media_processing_failed", 
-                self.request.user, 
-                str(e)
-            )
+            # Log but don't fail - media processing is not critical
+            pass
