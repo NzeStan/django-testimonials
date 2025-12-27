@@ -177,8 +177,12 @@ class TestimonialViewSet(viewsets.ModelViewSet):
                 str(e)
             )
         
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        # ✅ FIX: Re-serialize the created testimonial to get proper serializer data
+        # This ensures the response has all fields including 'id'
+        response_serializer = self.get_serializer(testimonial)
+        headers = self.get_success_headers(response_serializer.data)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     
     def update(self, request, *args, **kwargs):
         """Optimized update with cache invalidation."""
@@ -420,6 +424,7 @@ class TestimonialMediaViewSet(viewsets.ModelViewSet):
     queryset = TestimonialMedia.objects.select_related('testimonial').all()
     serializer_class = TestimonialMediaSerializer
     permission_classes = [IsTestimonialAuthorOrReadOnly]
+    pagination_class = OptimizedPagination
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['testimonial', 'media_type']
     ordering_fields = ['created_at', 'order']
