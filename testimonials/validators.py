@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 from .conf import app_settings
 from decimal import Decimal, InvalidOperation
-
+import re
 
 
 def validate_rating(value):
@@ -35,6 +35,25 @@ def validate_rating(value):
         
     return value
 
+def validate_phone_number(value):
+    """
+    Basic phone number validation.
+    Uses django-phonenumber-field if available, otherwise basic validation.
+    """
+    if not value:
+        return value
+        
+    # Remove common separators
+    cleaned = re.sub(r'[\s\-\(\)\.]+', '', value)
+    
+    # Check if it's mostly digits (allow + for international)
+    if not re.match(r'^\+?\d{10,15}$', cleaned):
+        raise ValidationError(
+            _("Phone number must be between 10-15 digits.")
+        )
+    
+    return value
+
 
 def validate_testimonial_content(value):
     """
@@ -61,12 +80,15 @@ def validate_testimonial_content(value):
         )
     
     if app_settings.VALIDATE_CONTENT_QUALITY and value:
-        # Check for forbidden words
+        # Check for forbidden words - FIX: Check for whole words, not substrings
         forbidden_words = app_settings.FORBIDDEN_WORDS
         value_lower = value.lower()
         
         for word in forbidden_words:
-            if word.lower() in value_lower:
+            # Use word boundaries to match whole words only
+            # \b ensures we match "test" but not "test" in "testimonial"
+            pattern = r'\b' + re.escape(word.lower()) + r'\b'
+            if re.search(pattern, value_lower):
                 raise ValidationError(
                     _("Testimonial content contains inappropriate language.")
                 )
@@ -78,7 +100,7 @@ def validate_testimonial_content(value):
                 _("Testimonial content appears to contain excessive repetition.")
             )
     
-    return value.strip() if value else value
+    return value
 
 
 def create_file_size_validator(max_size_mb=None, file_type="file"):

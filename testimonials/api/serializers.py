@@ -381,10 +381,12 @@ class TestimonialCreateSerializer(AnonymousUserValidationMixin, serializers.Mode
     class Meta:
         model = Testimonial
         fields = [
+            'id',  # ✅ FIX: Include id in response after creation
             'author_name', 'author_email', 'author_phone', 'author_title',
             'company', 'location', 'avatar', 'title', 'content', 'rating',
             'category', 'source', 'is_anonymous', 'website', 'social_media',
         ]
+        read_only_fields = ['id']  # ✅ FIX: Make id read-only
     
     def validate_category(self, value):
         """
@@ -457,8 +459,6 @@ class TestimonialCreateSerializer(AnonymousUserValidationMixin, serializers.Mode
         log_testimonial_action(testimonial, "create", user)
         
         return testimonial
-
-
 
 
 class TestimonialAdminActionSerializer(serializers.Serializer):
