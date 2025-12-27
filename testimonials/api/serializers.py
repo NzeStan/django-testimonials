@@ -44,7 +44,6 @@ class TestimonialMediaSerializer(
             'media_type_display',
             'title',
             'description',
-            'alt_text',
             'is_primary',
             'order',
             'thumbnails',
