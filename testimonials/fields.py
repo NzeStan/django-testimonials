@@ -83,18 +83,12 @@ class TestimonialContentField(forms.CharField):
     """
     
     def __init__(self, *args, **kwargs):
-        self.min_length = kwargs.pop('min_length', 10)
+        # Set default but DON'T pop - let CharField handle it
+        kwargs.setdefault('min_length', 10)
         kwargs.setdefault('widget', forms.Textarea(attrs={'rows': 4, 'class': 'testimonial-content'}))
         super().__init__(*args, **kwargs)
     
-    def validate(self, value):
-        super().validate(value)
-        if value and len(value) < self.min_length:
-            raise ValidationError(
-                _('Content must be at least %(min)s characters long.'),
-                params={'min': self.min_length},
-                code='content_too_short'
-            )
+    # Remove custom validate method - CharField already handles min_length!
 
 
 class JSONField(forms.CharField):
