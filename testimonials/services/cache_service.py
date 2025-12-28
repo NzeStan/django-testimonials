@@ -141,7 +141,8 @@ class TestimonialCacheService:
             return None
         
         try:
-            return pattern.format(**kwargs) if kwargs else pattern
+            # ✅ ALWAYS format - this validates required placeholders
+            return pattern.format(**kwargs)
         except KeyError as e:
             logger.error(f"Missing key for pattern {pattern_name}: {e}")
             return None

@@ -85,20 +85,12 @@ class TaskExecutor:
     
     @staticmethod
     def _execute_async(task_func: Callable, *args, **kwargs) -> Any:
-        """
-        Execute task asynchronously using Celery.
-        
-        Args:
-            task_func: Task function (must be a Celery task)
-            *args: Task arguments
-            **kwargs: Task keyword arguments
-            
-        Returns:
-            AsyncResult or None if failed
-        """
+        """Execute task asynchronously using Celery."""
         if not hasattr(task_func, 'delay'):
+            # Get task name safely
+            task_name = getattr(task_func, '__name__', repr(task_func))
             logger.error(
-                f"Function '{task_func.__name__}' is not a Celery task. "
+                f"Function '{task_name}' is not a Celery task. "
                 f"Cannot execute asynchronously."
             )
             return None
@@ -106,30 +98,24 @@ class TaskExecutor:
         try:
             # Use .delay() for simple async execution
             async_result = task_func.delay(*args, **kwargs)
+            # Get task name safely
+            task_name = getattr(task_func, '__name__', repr(task_func))
             logger.debug(
-                f"Task '{task_func.__name__}' queued with ID: {async_result.id}"
+                f"Task '{task_name}' queued with ID: {async_result.id}"
             )
             return async_result
         except Exception as e:
+            # Get task name safely
+            task_name = getattr(task_func, '__name__', repr(task_func))
             logger.error(
-                f"Async execution of '{task_func.__name__}' failed: {e}",
+                f"Async execution of '{task_name}' failed: {e}",
                 exc_info=True
             )
             return None
     
     @staticmethod
     def _execute_sync(task_func: Callable, *args, **kwargs) -> Any:
-        """
-        Execute task synchronously.
-        
-        Args:
-            task_func: Task function
-            *args: Task arguments
-            **kwargs: Task keyword arguments
-            
-        Returns:
-            Task result or None if failed
-        """
+        """Execute task synchronously."""
         try:
             # Remove Celery-specific kwargs if present
             kwargs.pop('countdown', None)
@@ -137,14 +123,18 @@ class TaskExecutor:
             kwargs.pop('expires', None)
             
             result = task_func(*args, **kwargs)
-            logger.debug(f"Task '{task_func.__name__}' executed synchronously")
+            # Get task name safely
+            task_name = getattr(task_func, '__name__', repr(task_func))
+            logger.debug(f"Task '{task_name}' executed synchronously")
             return result
         except Exception as e:
+            # Get task name safely
+            task_name = getattr(task_func, '__name__', repr(task_func))
             logger.error(
-                f"Sync execution of '{task_func.__name__}' failed: {e}",
+                f"Sync execution of '{task_name}' failed: {e}",
                 exc_info=True
             )
-            return None
+        return None
     
     @classmethod
     def execute_delayed(
@@ -154,23 +144,13 @@ class TaskExecutor:
         *args,
         **kwargs
     ) -> Any:
-        """
-        Execute a task with a delay (only works with async).
-        Falls back to immediate execution if async unavailable.
-        
-        Args:
-            task_func: Task function
-            delay_seconds: Number of seconds to delay
-            *args: Task arguments
-            **kwargs: Task keyword arguments
-            
-        Returns:
-            AsyncResult or immediate result
-        """
+        """Execute a task with a delay (only works with async)."""
         if not cls.is_celery_available():
+            # Get task name safely
+            task_name = getattr(task_func, '__name__', repr(task_func))
             logger.warning(
                 f"Delayed execution requested but Celery unavailable. "
-                f"Executing '{task_func.__name__}' immediately."
+                f"Executing '{task_name}' immediately."
             )
             return cls._execute_sync(task_func, *args, **kwargs)
         
@@ -181,14 +161,18 @@ class TaskExecutor:
                 kwargs=kwargs,
                 countdown=delay_seconds
             )
+            # Get task name safely
+            task_name = getattr(task_func, '__name__', repr(task_func))
             logger.debug(
-                f"Task '{task_func.__name__}' scheduled in {delay_seconds}s "
+                f"Task '{task_name}' scheduled in {delay_seconds}s "
                 f"with ID: {async_result.id}"
             )
             return async_result
         except Exception as e:
+            # Get task name safely
+            task_name = getattr(task_func, '__name__', repr(task_func))
             logger.error(
-                f"Delayed execution of '{task_func.__name__}' failed: {e}",
+                f"Delayed execution of '{task_name}' failed: {e}",
                 exc_info=True
             )
             # Fallback to immediate sync execution
@@ -202,34 +186,17 @@ class TaskExecutor:
         batch_size: int = 100,
         use_async: Optional[bool] = None
     ) -> list:
-        """
-        Execute a task for multiple items in batches.
-        
-        Args:
-            task_func: Task function to execute
-            items: List of items to process
-            batch_size: Number of items per batch
-            use_async: Force async or sync execution
-            
-        Returns:
-            List of results for each batch
-            
-        Example:
-            # Process 1000 testimonials in batches of 100
-            results = TaskExecutor.execute_batch(
-                process_testimonial,
-                testimonial_ids,
-                batch_size=100
-            )
-        """
+        """Execute a task for multiple items in batches."""
         results = []
         
         for i in range(0, len(items), batch_size):
             batch = items[i:i + batch_size]
             
+            # Get task name safely
+            task_name = getattr(task_func, '__name__', repr(task_func))
             logger.debug(
                 f"Processing batch {i // batch_size + 1} "
-                f"({len(batch)} items) with '{task_func.__name__}'"
+                f"({len(batch)} items) with '{task_name}'"
             )
             
             # Execute task for the batch
@@ -242,7 +209,6 @@ class TaskExecutor:
         )
         
         return results
-
 
 # Convenience function for backward compatibility
 def execute_task(task_func: Callable, *args, **kwargs) -> Any:
