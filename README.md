@@ -42,12 +42,12 @@ A **high-performance**, **enterprise-grade** Django package for managing custome
 
 ## 📋 **Requirements**
 
-- **Python:** 3.8+ 
-- **Django:** 3.2+
-- **Django REST Framework:** 3.12+
-- **Pillow:** 8.0+ (for image handling)
+- **Python:** 3.10+
+- **Django:** 4.2+
+- **Django REST Framework:** 3.14+
+- **Pillow:** 10.0+ (for image handling)
 - **django-phonenumber-field:** 7.0+
-- **django-filter:** 2.4.0+
+- **django-filter:** 23.2+
 
 ### **Optional (for performance features):**
 - **django-background-tasks:** For database-backed background task processing
@@ -378,9 +378,9 @@ python -m pytest
 python -m pytest --cov=testimonials --cov-report=html
 
 # Run specific test categories
-python -m pytest tests/test_api.py
-python -m pytest tests/test_models.py
-python -m pytest tests/test_performance.py
+python -m pytest testimonials/tests/test_api_views.py
+python -m pytest testimonials/tests/test_model.py
+python -m pytest testimonials/tests/test_serializers.py
 ```
 
 ## 🤝 **Contributing**

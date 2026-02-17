@@ -102,11 +102,13 @@
                 <span style="font-weight: 500;">{{ category.name }}</span>
                 <span style="color: #718096;">
                     {{ category.approved }} / {{ category.total }} {% trans "approved" %}
-                    ({% widthratio category.approved category.total 100 %}%)
+                    {% if category.total > 0 %}({% widthratio category.approved category.total 100 %}%){% else %}(0%){% endif %}
                 </span>
             </div>
             <div style="height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden;">
+                {% if category.total > 0 %}
                 <div style="height: 100%; width: {% widthratio category.approved category.total 100 %}%; background: #10b981;"></div>
+                {% endif %}
             </div>
         </div>
         {% endfor %}

@@ -1,4 +1,4 @@
-.env# Python
+# Python
 __pycache__/
 *.py[cod]
 *.so
@@ -13,18 +13,20 @@ __pycache__/
 venv/
 .venv/
 env/
-.env/
 ENV/
-*.env
 *.venv
+
+# Environment
+.env
+*.env
 
 # Django/DRF specific
 *.log
 local_settings.py
 db.sqlite3
-media/
-staticfiles/
-static/
+/media/
+/staticfiles/
+/static/
 
 # IDEs and editors
 .vscode/

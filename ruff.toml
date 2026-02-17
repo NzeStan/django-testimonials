@@ -30,7 +30,7 @@ line-length = 88
 indent-width = 4
 
 # Assume Python 3.8+
-target-version = "py38"
+target-version = "py310"
 
 [tool.ruff.lint]
 # Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
@@ -107,7 +107,7 @@ line-ending = "auto"
 
 [tool.ruff.lint.isort]
 # Django-specific isort configuration
-known-first-party = ["Django Testimonials"]
+known-first-party = ["testimonials"]
 known-django = ["django"]
 section-order = ["future", "standard-library", "django", "third-party", "first-party", "local-folder"]
 

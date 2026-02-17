@@ -536,7 +536,7 @@ class DashboardAnalyticsTests(DashboardTestCase):
         
         stats = response.context['testimonial_stats']
         self.assertIn('total', stats)
-        self.assertIn('avg_rating', stats)  
+        self.assertIn('average_rating', stats)
     
     def test_analytics_media_stats(self):
         """Test that media stats are included."""

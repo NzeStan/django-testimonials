@@ -1,8 +1,6 @@
 include README.md
 include LICENSE
-include CHANGELOG.md
-include requirements.txt
-include requirements-dev.txt
+include pyproject.toml
 recursive-include testimonials/templates *
 recursive-include testimonials/static *
 recursive-include testimonials/locale *
@@ -12,9 +10,12 @@ recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
 recursive-exclude * *.orig
 recursive-exclude * *.rej
+prune django-package-test
+prune tests
 exclude .gitignore
 exclude .pre-commit-config.yaml
 exclude pytest.ini
 exclude tox.ini
 exclude .coverage
 exclude .env*
+exclude ruff.toml

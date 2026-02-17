@@ -57,16 +57,16 @@ class TestimonialMediaSerializer(
     # Display helpers
     # --------------------
 
-    def get_media_type_display(self, obj):
+    def get_media_type_display(self, obj) -> str:
         return self.get_display_value(obj, 'media_type')
 
-    def get_file_url(self, obj):
+    def get_file_url(self, obj) -> str | None:
         request = self.context.get('request')
         if obj.file and hasattr(obj.file, 'url'):
             return request.build_absolute_uri(obj.file.url) if request else obj.file.url
         return None
 
-    def get_thumbnails(self, obj):
+    def get_thumbnails(self, obj) -> dict | None:
         if obj.media_type != TestimonialMediaType.IMAGE:
             return None
 
