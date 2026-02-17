@@ -1,10 +1,3 @@
-# testimonials/tests/test_signals.py
-
-"""
-Comprehensive tests for signal handlers.
-Tests cover all signal handlers, edge cases, failures, and successful operations.
-"""
-
 from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -20,12 +13,6 @@ from testimonials.models import Testimonial, TestimonialCategory, TestimonialMed
 from testimonials.constants import TestimonialStatus, TestimonialMediaType
 from testimonials.signals import (
     testimonial_approved,
-    testimonial_rejected,
-    testimonial_featured,
-    testimonial_archived,
-    testimonial_responded,
-    testimonial_created,
-    testimonial_media_added,
 )
 
 User = get_user_model()
@@ -527,9 +514,9 @@ class TestimonialMediaPostSaveSignalTest(SignalTestCase):
         self.assertEqual(call_kwargs['instance'], media)
     
     @patch('testimonials.signals.TaskExecutor.execute')
-    @override_settings(TESTIMONIALS_USE_CELERY=True)
+    @override_settings(TESTIMONIALS_USE_BACKGROUND_TASKS=True)
     def test_created_media_queues_processing_task(self, mock_execute):
-        """Test that creating media queues processing task when Celery enabled."""
+        """Test that creating media queues processing task when background tasks enabled."""
         testimonial = Testimonial.objects.create(
             author=self.user,
             author_name='John Doe',
@@ -552,9 +539,9 @@ class TestimonialMediaPostSaveSignalTest(SignalTestCase):
         self.assertEqual(str(media.pk), call_args[1])
     
     @patch('testimonials.signals.TaskExecutor.execute')
-    @override_settings(TESTIMONIALS_USE_CELERY=False)
-    def test_media_processing_not_queued_when_celery_disabled(self, mock_execute):
-        """Test that media processing is not queued when Celery disabled."""
+    @override_settings(TESTIMONIALS_USE_BACKGROUND_TASKS=False)
+    def test_media_processing_not_queued_when_background_tasks_disabled(self, mock_execute):
+        """Test that media processing is not queued when background tasks disabled."""
         testimonial = Testimonial.objects.create(
             author=self.user,
             author_name='John Doe',
@@ -613,7 +600,7 @@ class TestimonialMediaPostSaveSignalTest(SignalTestCase):
     
     @patch('testimonials.signals.TaskExecutor.execute')
     @patch('testimonials.signals.logger')
-    @override_settings(TESTIMONIALS_USE_CELERY=True)
+    @override_settings(TESTIMONIALS_USE_BACKGROUND_TASKS=True)
     def test_media_processing_error_is_logged(self, mock_logger, mock_execute):
         """Test that errors queuing media processing are logged."""
         mock_execute.side_effect = Exception("Task queue error")

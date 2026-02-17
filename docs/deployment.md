@@ -16,11 +16,8 @@ services:
     environment:
       - DEBUG=False
       - DATABASE_URL=postgresql://postgres:password@db:5432/testimonials
-      - REDIS_URL=redis://redis:6379/1
-      - CELERY_BROKER_URL=redis://redis:6379/0
     depends_on:
       - db
-      - redis
     volumes:
       - media_volume:/app/media
       - static_volume:/app/staticfiles
@@ -31,30 +28,16 @@ services:
       timeout: 10s
       retries: 3
 
-  celery-worker:
+  background-tasks:
     build: .
-    command: celery -A your_project worker --loglevel=info --concurrency=4
+    command: python manage.py process_tasks
     environment:
       - DEBUG=False
       - DATABASE_URL=postgresql://postgres:password@db:5432/testimonials
-      - CELERY_BROKER_URL=redis://redis:6379/0
     depends_on:
       - db
-      - redis
     volumes:
       - media_volume:/app/media
-    restart: unless-stopped
-
-  celery-beat:
-    build: .
-    command: celery -A your_project beat --loglevel=info
-    environment:
-      - DEBUG=False
-      - DATABASE_URL=postgresql://postgres:password@db:5432/testimonials
-      - CELERY_BROKER_URL=redis://redis:6379/0
-    depends_on:
-      - db
-      - redis
     restart: unless-stopped
 
   db:
@@ -69,18 +52,6 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -101,7 +72,6 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
   media_volume:
   static_volume:
 ```
@@ -117,9 +87,7 @@ django-phonenumber-field[phonenumbers]>=7.1.0
 Pillow>=10.0.0
 
 # Performance & Caching
-django-redis>=5.3.0
-celery[redis]>=5.3.0
-redis>=4.6.0
+django-background-tasks>=1.2.5
 
 # Database
 psycopg2-binary>=2.9.7
@@ -421,23 +389,6 @@ Resources:
       MultiAZ: true
       StorageEncrypted: true
 
-  # ElastiCache Redis
-  RedisSubnetGroup:
-    Type: AWS::ElastiCache::SubnetGroup
-    Properties:
-      Description: Subnet group for Redis
-      SubnetIds: !Ref SubnetIds
-
-  RedisCluster:
-    Type: AWS::ElastiCache::ReplicationGroup
-    Properties:
-      ReplicationGroupDescription: Redis for testimonials
-      NumCacheClusters: 2
-      Engine: redis
-      CacheNodeType: cache.t3.micro
-      SubnetGroupName: !Ref RedisSubnetGroup
-      SecurityGroupIds:
-        - !Ref RedisSecurityGroup
 ```
 
 ### **Google Cloud Platform (GKE)**
@@ -477,11 +428,6 @@ spec:
             secretKeyRef:
               name: testimonials-secrets
               key: database-url
-        - name: REDIS_URL
-          valueFrom:
-            secretKeyRef:
-              name: testimonials-secrets
-              key: redis-url
         resources:
           requests:
             memory: "512Mi"
@@ -622,8 +568,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 env = environ.Env(
     DEBUG=(bool, False),
     USE_S3=(bool, True),
-    USE_REDIS=(bool, True),
-    USE_CELERY=(bool, True),
+    USE_CACHE=(bool, True),
+    USE_BACKGROUND_TASKS=(bool, True),
 )
 
 # Read .env file
@@ -640,15 +586,13 @@ DATABASES = {
 }
 
 # Cache
-if env('USE_REDIS'):
+if env('USE_CACHE'):
     CACHES = {
-        'default': env.cache('REDIS_URL')
+        'default': {
+            'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+            'LOCATION': 'testimonials_cache_table',
+        }
     }
-
-# Celery
-if env('USE_CELERY'):
-    CELERY_BROKER_URL = env('CELERY_BROKER_URL')
-    CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default=CELERY_BROKER_URL)
 
 # File storage
 if env('USE_S3'):
@@ -659,8 +603,8 @@ if env('USE_S3'):
     AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME', default='us-west-2')
 
 # Testimonials settings
-TESTIMONIALS_USE_REDIS_CACHE = env('USE_REDIS')
-TESTIMONIALS_USE_CELERY = env('USE_CELERY')
+TESTIMONIALS_USE_CACHE = env('USE_CACHE')
+TESTIMONIALS_USE_BACKGROUND_TASKS = env('USE_BACKGROUND_TASKS')
 TESTIMONIALS_NOTIFICATION_EMAIL = env('TESTIMONIALS_NOTIFICATION_EMAIL', default=None)
 ```
 
@@ -677,10 +621,7 @@ ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
 # Database
 DATABASE_URL=postgresql://user:password@localhost:5432/testimonials
 
-# Cache & Queue
-REDIS_URL=redis://localhost:6379/1
-CELERY_BROKER_URL=redis://localhost:6379/0
-CELERY_RESULT_BACKEND=redis://localhost:6379/0
+# Cache
 
 # File Storage (AWS S3)
 USE_S3=True
@@ -705,8 +646,8 @@ SENTRY_DSN=your-sentry-dsn
 NEW_RELIC_LICENSE_KEY=your-new-relic-key
 
 # Performance
-USE_REDIS=True
-USE_CELERY=True
+USE_CACHE=True
+USE_BACKGROUND_TASKS=True
 ```
 
 ## 📊 **Monitoring & Logging**
@@ -762,7 +703,7 @@ LOGGING = {
             'level': 'DEBUG',
             'propagate': False,
         },
-        'celery': {
+        'background_task': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
             'propagate': False,
@@ -825,12 +766,11 @@ class PrometheusMiddleware(MiddlewareMixin):
 
 ```python
 # health_checks.py
-import redis
 from django.http import JsonResponse
 from django.db import connection
+from django.core.cache import cache
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.cache import never_cache
-from celery import current_app
 
 @never_cache
 @require_http_methods(["GET"])
@@ -854,32 +794,30 @@ def health_check(request):
         }
         health_status['status'] = 'unhealthy'
 
-    # Redis check
+    # Cache check
     try:
-        r = redis.Redis.from_url(settings.REDIS_URL)
-        r.ping()
-        health_status['checks']['redis'] = {'status': 'healthy'}
+        cache.set('health_check', 'ok', 10)
+        if cache.get('health_check') == 'ok':
+            health_status['checks']['cache'] = {'status': 'healthy'}
+        else:
+            health_status['checks']['cache'] = {
+                'status': 'unhealthy',
+                'error': 'Cache read/write failed'
+            }
+            health_status['status'] = 'unhealthy'
     except Exception as e:
-        health_status['checks']['redis'] = {
+        health_status['checks']['cache'] = {
             'status': 'unhealthy',
             'error': str(e)
         }
         health_status['status'] = 'unhealthy'
 
-    # Celery check
+    # Background tasks check
     try:
-        inspect = current_app.control.inspect()
-        stats = inspect.stats()
-        if stats:
-            health_status['checks']['celery'] = {'status': 'healthy'}
-        else:
-            health_status['checks']['celery'] = {
-                'status': 'unhealthy',
-                'error': 'No workers available'
-            }
-            health_status['status'] = 'unhealthy'
+        from background_task.models import Task
+        health_status['checks']['background_tasks'] = {'status': 'healthy'}
     except Exception as e:
-        health_status['checks']['celery'] = {
+        health_status['checks']['background_tasks'] = {
             'status': 'unhealthy',
             'error': str(e)
         }
@@ -996,14 +934,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       
-      redis:
-        image: redis:7
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
     - uses: actions/checkout@v4
     
@@ -1020,7 +950,6 @@ jobs:
     - name: Run tests
       env:
         DATABASE_URL: postgresql://postgres:postgres@localhost/test_testimonials
-        REDIS_URL: redis://localhost:6379/1
       run: |
         pytest --cov=testimonials --cov-report=xml
     
@@ -1048,13 +977,13 @@ This guide covers enterprise-grade deployment strategies for Django Testimonials
           ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Application   │    │   Background     │    │   File Storage  │
-│   (Django)      │◄──►│   (Celery)      │    │   (S3/GCS)      │
+│   (Django)      │◄──►│   (Threads)     │    │   (S3/GCS)      │
 └─────────┬───────┘    └─────────┬───────┘    └─────────────────┘
           │                      │
           ▼                      ▼
 ┌─────────────────┐    ┌─────────────────┐
-│   Database      │    │   Cache/Queue   │
-│   (PostgreSQL)  │    │   (Redis)       │
+│   Database      │    │   Cache         │
+│   (PostgreSQL)  │    │   (Database)    │
 └─────────────────┘    └─────────────────┘
 ```
 

@@ -1,10 +1,3 @@
-# testimonials/managers.py - REFACTORED
-
-"""
-Refactored managers using mixins to eliminate duplication.
-Includes the BUG FIX for optimized_for_api().
-"""
-
 from django.db import models
 from django.db.models import Count, Avg, Q, Prefetch, Case, When, IntegerField
 from django.utils import timezone

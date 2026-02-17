@@ -55,8 +55,6 @@ pip install sentry-sdk[django]
 # settings.py
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
-from sentry_sdk.integrations.celery import CeleryIntegration
-from sentry_sdk.integrations.redis import RedisIntegration
 
 sentry_sdk.init(
     dsn="your-sentry-dsn",
@@ -66,8 +64,6 @@ sentry_sdk.init(
             middleware_spans=True,
             signals_spans=True,
         ),
-        CeleryIntegration(monitor_beat_tasks=True),
-        RedisIntegration(),
     ],
     traces_sample_rate=0.1,  # Adjust based on traffic
     send_default_pii=True,
@@ -211,46 +207,44 @@ max_client_conn = 100
 default_pool_size = 20
 ```
 
-## ⚡ **Redis Cache Optimization**
+## ⚡ **Cache Optimization**
 
-### **Redis Configuration**
+### **Cache Backend Configuration**
 
-#### **redis.conf Optimization**
-```bash
-# Memory optimization
-maxmemory 256mb
-maxmemory-policy allkeys-lru
-
-# Persistence (adjust based on needs)
-save 900 1
-save 300 10
-save 60 10000
-
-# Network optimization
-tcp-keepalive 300
-timeout 0
-```
-
-#### **Advanced Redis Settings**
+#### **Database Cache (Recommended for simplicity)**
 ```python
 # settings.py
 CACHES = {
     'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': 'redis://localhost:6379/1',
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'CONNECTION_POOL_KWARGS': {
-                'max_connections': 50,
-                'retry_on_timeout': True,
-                'socket_keepalive': True,
-                'socket_keepalive_options': {},
-            },
-            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
-            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
-        },
-        'KEY_PREFIX': 'testimonials',
-        'VERSION': 1,
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'testimonials_cache_table',
+    }
+}
+```
+
+```bash
+# Create the cache table
+python manage.py createcachetable
+```
+
+#### **Local Memory Cache (Development)**
+```python
+# settings.py
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'testimonials-cache',
+    }
+}
+```
+
+#### **File-Based Cache (Alternative)**
+```python
+# settings.py
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': '/var/tmp/django_cache',
         'TIMEOUT': 900,  # 15 minutes
     }
 }
@@ -301,103 +295,49 @@ def invalidate_testimonial_caches(testimonial_id, category_id=None):
     cache.delete_many(keys_to_invalidate)
 ```
 
-## 🔄 **Celery Optimization**
+## 🔄 **Background Task Optimization**
 
-### **Celery Configuration**
+### **Task Execution Configuration**
 
-#### **Production Settings**
+Django Testimonials uses `threading.Thread` for background task execution and optionally supports `django-background-tasks` for database-backed task processing.
+
+#### **Enable Background Tasks**
 ```python
-# celery.py
-from celery import Celery
-from kombu import Queue, Exchange
+# settings.py
+TESTIMONIALS_USE_BACKGROUND_TASKS = True
 
-app = Celery('testimonials')
-
-# Broker settings
-app.conf.update(
-    broker_url='redis://localhost:6379/0',
-    result_backend='redis://localhost:6379/0',
-    
-    # Performance settings
-    task_serializer='json',
-    accept_content=['json'],
-    result_serializer='json',
-    timezone='UTC',
-    enable_utc=True,
-    
-    # Worker settings
-    worker_prefetch_multiplier=4,
-    task_acks_late=True,
-    worker_disable_rate_limits=False,
-    
-    # Queue configuration
-    task_routes={
-        'testimonials.tasks.send_testimonial_email': {'queue': 'emails'},
-        'testimonials.tasks.process_media': {'queue': 'media'},
-        'testimonials.tasks.bulk_moderate': {'queue': 'bulk'},
-    },
-    
-    # Queue definitions
-    task_queues=(
-        Queue('default', Exchange('default'), routing_key='default'),
-        Queue('emails', Exchange('emails'), routing_key='emails'),
-        Queue('media', Exchange('media'), routing_key='media'),
-        Queue('bulk', Exchange('bulk'), routing_key='bulk'),
-    ),
-    
-    # Retry settings
-    task_retry_backoff=True,
-    task_retry_backoff_max=700,
-    task_retry_jitter=False,
-)
+# Optional: Install django-background-tasks for persistent task queue
+# pip install django-background-tasks
+INSTALLED_APPS += ['background_task']
 ```
 
-#### **Worker Optimization**
+#### **Start the Task Processor**
 ```bash
-# Start optimized workers
-celery -A testimonials worker \
-    --loglevel=info \
-    --concurrency=4 \
-    --max-tasks-per-child=1000 \
-    --queue=default,emails
-
-# Start specialized workers
-celery -A testimonials worker \
-    --loglevel=info \
-    --concurrency=2 \
-    --queue=media \
-    --hostname=media@%h
-
-celery -A testimonials worker \
-    --loglevel=info \
-    --concurrency=1 \
-    --queue=bulk \
-    --hostname=bulk@%h
+# Process background tasks stored in the database
+python manage.py process_tasks
 ```
 
 ### **Task Optimization**
 
 #### **Batch Processing**
 ```python
-# Optimized bulk email task
-from celery import group
-from testimonials.tasks import send_testimonial_email
+# Optimized bulk operations using TaskExecutor
+from testimonials.services import TaskExecutor
+from testimonials.tasks import send_testimonial_notification_email
 
 def send_bulk_emails(testimonial_ids, email_type):
     """Send emails in batches for better performance."""
     batch_size = 50
-    
+
     for i in range(0, len(testimonial_ids), batch_size):
         batch = testimonial_ids[i:i + batch_size]
-        
-        # Create group of tasks
-        job = group(
-            send_testimonial_email.s(tid, email_type)
-            for tid in batch
-        )
-        
-        # Execute batch
-        job.apply_async()
+
+        for tid in batch:
+            TaskExecutor.execute(
+                send_testimonial_notification_email,
+                str(tid), email_type,
+                recipient_email='admin@example.com'
+            )
 ```
 
 ## 🌐 **API Optimization**
@@ -660,16 +600,14 @@ class PerformanceMiddleware(MiddlewareMixin):
 from django.http import JsonResponse
 from django.core.cache import cache
 from django.db import connection
-import redis
 
 def health_check(request):
     """Comprehensive health check."""
     status = {
         'database': False,
         'cache': False,
-        'celery': False,
     }
-    
+
     # Database check
     try:
         with connection.cursor() as cursor:
@@ -677,25 +615,16 @@ def health_check(request):
         status['database'] = True
     except Exception:
         pass
-    
+
     # Cache check
     try:
         cache.set('health_check', 'ok', 10)
         status['cache'] = cache.get('health_check') == 'ok'
     except Exception:
         pass
-    
-    # Celery check
-    try:
-        from celery import current_app
-        inspect = current_app.control.inspect()
-        stats = inspect.stats()
-        status['celery'] = bool(stats)
-    except Exception:
-        pass
-    
+
     overall_status = all(status.values())
-    
+
     return JsonResponse({
         'status': 'healthy' if overall_status else 'unhealthy',
         'components': status
@@ -788,15 +717,15 @@ class Command(BaseCommand):
 - [ ] Database settings tuned
 
 ### **Caching**
-- [ ] Redis installed and configured
+- [ ] Cache backend configured (Database, LocMem, or File-based)
 - [ ] Cache keys properly namespaced
 - [ ] Cache invalidation strategy implemented
 - [ ] Cache hit rate monitoring enabled
 
 ### **Background Tasks**
-- [ ] Celery installed and configured
-- [ ] Task queues properly organized
-- [ ] Worker processes optimized
+- [ ] Background tasks enabled (`TESTIMONIALS_USE_BACKGROUND_TASKS = True`)
+- [ ] django-background-tasks installed (optional, for persistent queue)
+- [ ] Task processor running (`python manage.py process_tasks`)
 - [ ] Task monitoring enabled
 
 ### **API**

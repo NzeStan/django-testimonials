@@ -1,9 +1,3 @@
-# testimonials/forms.py - REFACTORED
-
-"""
-Refactored forms using validation mixins to eliminate duplication.
-"""
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError

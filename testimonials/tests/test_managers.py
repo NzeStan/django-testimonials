@@ -1,10 +1,3 @@
-# testimonials/tests/test_managers.py
-
-"""
-Comprehensive tests for testimonial managers and querysets.
-Tests cover all manager methods, queryset filters, edge cases, and failures.
-"""
-
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -18,11 +11,6 @@ from testimonials.models import Testimonial, TestimonialCategory, TestimonialMed
 from testimonials.constants import TestimonialStatus, TestimonialSource, TestimonialMediaType
 from testimonials.managers import (
     TestimonialCategoryQuerySet,
-    TestimonialQuerySet,
-    TestimonialMediaQuerySet,
-    TestimonialCategoryManager,
-    TestimonialManager,
-    TestimonialMediaManager,
 )
 
 User = get_user_model()

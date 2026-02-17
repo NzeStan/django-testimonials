@@ -1,10 +1,3 @@
-# testimonials/tests/test_manager_mixins.py
-
-"""
-Comprehensive tests for manager mixins.
-Tests cover all mixin methods, edge cases, and integration with managers.
-"""
-
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.utils import timezone

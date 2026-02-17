@@ -1,16 +1,9 @@
-# testimonials/tests/test_tasks.py
-
-"""
-Comprehensive tests for Celery tasks.
-Tests cover all task functions, edge cases, failures, retries, and successful operations.
-"""
-
 from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.utils import timezone
 from django.conf import settings
-from unittest.mock import patch, Mock, MagicMock, call
+from unittest.mock import patch, MagicMock, call
 from datetime import timedelta
 from io import BytesIO
 from PIL import Image
@@ -855,22 +848,18 @@ class RefreshStatsCachesTest(TaskTestCase):
 
 
 # ============================================================================
-# CELERY AVAILABILITY TESTS
+# BACKGROUND TASKS AVAILABILITY TESTS
 # ============================================================================
 
-class CeleryAvailabilityTest(TestCase):
-    """Test Celery availability handling."""
-    
-    def test_celery_available_constant_exists(self):
-        """Test that CELERY_AVAILABLE constant exists."""
-        self.assertTrue(hasattr(tasks, 'CELERY_AVAILABLE'))
-    
-    def test_shared_task_decorator_exists(self):
-        """Test that shared_task decorator exists."""
-        self.assertTrue(hasattr(tasks, 'shared_task'))
-    
-    def test_tasks_have_shared_task_decorator(self):
-        """Test that all task functions have appropriate decorator."""
+class BackgroundTasksAvailabilityTest(TestCase):
+    """Test background tasks availability handling."""
+
+    def test_background_tasks_available_constant_exists(self):
+        """Test that BACKGROUND_TASKS_AVAILABLE constant exists."""
+        self.assertTrue(hasattr(tasks, 'BACKGROUND_TASKS_AVAILABLE'))
+
+    def test_all_task_functions_exist(self):
+        """Test that all task functions exist."""
         task_functions = [
             'send_testimonial_notification_email',
             'send_admin_notification',
@@ -880,6 +869,21 @@ class CeleryAvailabilityTest(TestCase):
             'warm_testimonial_caches',
             'refresh_volatile_caches',
         ]
-        
+
         for task_name in task_functions:
             self.assertTrue(hasattr(tasks, task_name))
+
+    def test_task_functions_are_callable(self):
+        """Test that all task functions are callable."""
+        task_functions = [
+            tasks.send_testimonial_notification_email,
+            tasks.send_admin_notification,
+            tasks.process_media,
+            tasks.cleanup_old_rejected_testimonials,
+            tasks.generate_testimonial_report,
+            tasks.warm_testimonial_caches,
+            tasks.refresh_volatile_caches,
+        ]
+
+        for func in task_functions:
+            self.assertTrue(callable(func))

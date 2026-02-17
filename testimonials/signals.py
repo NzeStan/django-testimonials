@@ -1,9 +1,3 @@
-# testimonials/signals.py - REFACTORED
-
-"""
-Refactored signals using services for cache and task management.
-"""
-
 import logging
 from django.db.models.signals import post_save, pre_save, post_delete
 from django.dispatch import Signal, receiver
@@ -172,7 +166,7 @@ def media_post_save(sender, instance, created, **kwargs):
         testimonial_media_added.send(sender=sender, instance=instance)
         
         # Process media asynchronously using TaskExecutor
-        if app_settings.USE_CELERY:
+        if app_settings.USE_BACKGROUND_TASKS:
             try:
                 from .tasks import process_media
                 TaskExecutor.execute(process_media, str(instance.pk))

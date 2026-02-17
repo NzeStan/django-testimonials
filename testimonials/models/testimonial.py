@@ -1,9 +1,6 @@
-# testimonials/models/testimonial.py - UPDATED to use app_settings.USER_MODEL consistently
-
 from django.db import models
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
-from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db.models import Q, Index
 import string
 from phonenumber_field.modelfields import PhoneNumberField
@@ -103,27 +100,27 @@ class TestimonialCategory(BaseModel):
         
         super().save(*args, **kwargs)
         
-        if app_settings.USE_REDIS_CACHE:
+        if app_settings.USE_CACHE:
             invalidate_testimonial_cache(category_id=self.pk)
     
     def delete(self, *args, **kwargs):
         category_id = self.pk
         super().delete(*args, **kwargs)
         
-        if app_settings.USE_REDIS_CACHE:
+        if app_settings.USE_CACHE:
             invalidate_testimonial_cache(category_id=category_id)
 
 
 class Testimonial(BaseModel):
     """
     Highly optimized main testimonial model with performance enhancements.
-    ✅ UPDATED: Now uses app_settings.USER_MODEL consistently throughout.
+    
     """
     __test__ = False
     
-    # ✅ CONSISTENT USE OF app_settings.USER_MODEL
+    
     author = models.ForeignKey(
-        app_settings.USER_MODEL,  # ✅ Changed from settings.AUTH_USER_MODEL
+        app_settings.USER_MODEL,  
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -278,7 +275,6 @@ class Testimonial(BaseModel):
         help_text=_("Links to the author's social media profiles (JSON format).")
     )
     
-    # ✅ CONSISTENT USE OF app_settings.USER_MODEL
     approved_at = models.DateTimeField(
         blank=True,
         null=True,
@@ -287,7 +283,7 @@ class Testimonial(BaseModel):
         help_text=_("Date and time when the testimonial was approved.")
     )
     approved_by = models.ForeignKey(
-        app_settings.USER_MODEL,  # ✅ Changed from settings.AUTH_USER_MODEL
+        app_settings.USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -313,7 +309,7 @@ class Testimonial(BaseModel):
         help_text=_("Date and time when a response was made.")
     )
     response_by = models.ForeignKey(
-        app_settings.USER_MODEL,  # ✅ Changed from settings.AUTH_USER_MODEL
+        app_settings.USER_MODEL, 
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -385,7 +381,7 @@ class Testimonial(BaseModel):
         
         super().save(*args, **kwargs)
         
-        if app_settings.USE_REDIS_CACHE:
+        if app_settings.USE_CACHE:
             invalidate_testimonial_cache(
                 testimonial_id=self.pk,
                 category_id=self.category_id,
@@ -399,7 +395,7 @@ class Testimonial(BaseModel):
         
         super().delete(*args, **kwargs)
         
-        if app_settings.USE_REDIS_CACHE:
+        if app_settings.USE_CACHE:
             invalidate_testimonial_cache(
                 testimonial_id=testimonial_id,
                 category_id=category_id,
@@ -653,7 +649,7 @@ class TestimonialMedia(BaseModel):
 
         super().save(*args, **kwargs)
         
-        if app_settings.USE_REDIS_CACHE:
+        if app_settings.USE_CACHE:
             invalidate_testimonial_cache(testimonial_id=self.testimonial_id)
 
     
@@ -661,5 +657,5 @@ class TestimonialMedia(BaseModel):
         testimonial_id = self.testimonial_id
         super().delete(*args, **kwargs)
         
-        if app_settings.USE_REDIS_CACHE:
+        if app_settings.USE_CACHE:
             invalidate_testimonial_cache(testimonial_id=testimonial_id)

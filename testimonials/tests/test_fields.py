@@ -1,12 +1,3 @@
-# testimonials/tests/test_fields.py
-
-"""
-Comprehensive tests for custom fields and widgets.
-Tests cover all field types, validation, edge cases, and failures.
-
-NOTE: These tests assume TestimonialContentField is FIXED per BUGFIX_TestimonialContentField.md
-"""
-
 from django.test import TestCase
 from django.core.exceptions import ValidationError
 from django import forms
@@ -272,8 +263,7 @@ class StarRatingWidgetTest(TestCase):
 
 
 # ============================================================================
-# TESTIMONIAL CONTENT FIELD TESTS  
-# NOTE: Requires bug fix in TestimonialContentField (see BUGFIX_TestimonialContentField.md)
+# TESTIMONIAL CONTENT FIELD TESTS 
 # ============================================================================
 
 class TestimonialContentFieldTest(TestCase):

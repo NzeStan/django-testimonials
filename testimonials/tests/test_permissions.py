@@ -1,19 +1,11 @@
-# testimonials/tests/test_permissions.py
-
-"""
-Comprehensive tests for API permissions.
-Tests cover all permission classes, view-level and object-level permissions,
-and various user scenarios (anonymous, authenticated, staff, admin, moderator).
-"""
-
-from django.test import TestCase, RequestFactory
+from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from rest_framework.test import APIRequestFactory
 from unittest.mock import Mock
 
 from testimonials.models import Testimonial, TestimonialMedia, TestimonialCategory
-from testimonials.constants import TestimonialStatus, TestimonialMediaType
+from testimonials.constants import TestimonialMediaType
 from testimonials.api.permissions import (
     IsAdminOrReadOnly,
     IsTestimonialAuthorOrReadOnly,
@@ -541,11 +533,11 @@ class PermissionEdgeCaseTests(PermissionTestCase):
         view = Mock()
         
         # Create mock user without groups
-        user = Mock()
+        user = Mock(spec=['is_authenticated', 'is_staff', 'is_superuser'])
         user.is_authenticated = True
         user.is_staff = False
         user.is_superuser = False
-        # Don't set groups attribute
+        # Don't set groups attribute - spec ensures hasattr(user, 'groups') is False
         
         request = self.factory.post('/api/testimonials/1/approve/')
         request.user = user

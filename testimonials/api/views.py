@@ -1,9 +1,3 @@
-# testimonials/api/views.py - FIXED
-
-"""
-API views with proper settings respect for USE_REDIS_CACHE and USE_CELERY.
-"""
-
 from rest_framework import viewsets, permissions, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -14,7 +8,7 @@ from django.utils.translation import gettext_lazy as _
 from django.db.models import Q
 
 from ..models import Testimonial, TestimonialCategory, TestimonialMedia
-from ..constants import TestimonialStatus, TestimonialMediaType
+from ..constants import TestimonialStatus
 from ..conf import app_settings
 
 # Import services
@@ -52,8 +46,7 @@ class OptimizedPagination(PageNumberPagination):
         """Enhanced pagination response with cache headers."""
         response = super().get_paginated_response(data)
         
-        # ✅ FIXED: Only add cache headers if Redis is enabled
-        if app_settings.USE_REDIS_CACHE:
+        if app_settings.USE_CACHE:
             response['Cache-Control'] = f'public, max-age={app_settings.CACHE_TIMEOUT}'
             response['Vary'] = 'Accept, Accept-Language, Authorization'
         
@@ -72,7 +65,6 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     search_fields = ['author_name', 'company', 'content', 'title']
     ordering_fields = ['created_at', 'rating', 'display_order', 'approved_at']
     ordering = ['-display_order', '-created_at']
-    # ✅ FIX: Disable throttling in viewset (can be overridden in settings)
     throttle_classes = []
     
     def get_queryset(self):
@@ -95,7 +87,6 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     
     def get_serializer_class(self):
         """
-        🔒 CRITICAL SECURITY FIX:
         Return appropriate serializer based on user role and action.
         Now properly handles DETAIL vs LIST views.
         """
@@ -111,14 +102,12 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         if self.action in ['moderate', 'bulk_action']:
             return TestimonialAdminActionSerializer
         
-        # 🔒 DETAIL VIEW (retrieve, update, partial_update)
+        #  DETAIL VIEW (retrieve, update, partial_update)
         if self.action in ['retrieve', 'update', 'partial_update']:
             if is_admin:
-                return TestimonialAdminDetailSerializer  # ✅ Shows ip_address, extra_data
+                return TestimonialAdminDetailSerializer  
             else:
-                return TestimonialUserDetailSerializer  # ✅ Shows response_at, but NOT ip/rejection_reason
-        
-        # 🔒 LIST VIEW (list)
+                return TestimonialUserDetailSerializer  
         if is_admin:
             return TestimonialAdminSerializer  # Full fields
         
@@ -126,16 +115,13 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     
     def get_permissions(self):
         """
-        🔒 CRITICAL SECURITY FIX: 
         Dynamic permissions based on action - NOW INCLUDES approve, reject, feature!
         """
-        # ✅ SECURITY FIX: Add approve, reject, feature to moderation permissions
         if self.action in ['create']:
             permission_classes = [permissions.AllowAny]
         elif self.action in ['update', 'partial_update', 'destroy']:
             permission_classes = [IsTestimonialAuthorOrReadOnly]
         elif self.action in ['moderate', 'bulk_action', 'approve', 'reject', 'feature']:
-            # ✅ FIX: These actions now require CanModerateTestimonial permission
             permission_classes = [CanModerateTestimonial]
         else:
             permission_classes = [permissions.IsAuthenticatedOrReadOnly]
@@ -151,7 +137,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         """
-        ✅ FIXED: Properly respects USE_CELERY setting.
+        Properly respects USE_BACKGROUND_TASKS setting.
         TaskExecutor handles the fallback internally.
         """
         serializer = self.get_serializer(data=request.data)
@@ -160,8 +146,6 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         # Perform creation
         testimonial = self.perform_create(serializer)
         
-        # ✅ TaskExecutor automatically checks USE_CELERY internally
-        # No need for explicit if statement here
         try:
             from ..tasks import send_admin_notification
             TaskExecutor.execute(
@@ -176,9 +160,6 @@ class TestimonialViewSet(viewsets.ModelViewSet):
                 request.user, 
                 str(e)
             )
-        
-        # ✅ FIX: Re-serialize the created testimonial to get proper serializer data
-        # This ensures the response has all fields including 'id'
         response_serializer = self.get_serializer(testimonial)
         headers = self.get_success_headers(response_serializer.data)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
@@ -197,7 +178,6 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         
         self.perform_update(serializer)
         
-        # ✅ Cache invalidation respects USE_REDIS_CACHE internally
         if (serializer.instance.status != old_status or 
             serializer.instance.category_id != old_category_id):
             TestimonialCacheService.invalidate_testimonial(
@@ -221,7 +201,6 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         # Perform deletion
         self.perform_destroy(instance)
         
-        # ✅ Cache invalidation respects USE_REDIS_CACHE internally
         TestimonialCacheService.invalidate_testimonial(
             testimonial_id=testimonial_id,
             category_id=category_id,
@@ -247,7 +226,6 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         testimonial = self.get_object()
         testimonial.approve(user=request.user)
         
-        # ✅ Cache invalidation respects USE_REDIS_CACHE internally
         TestimonialCacheService.invalidate_testimonial(
             testimonial_id=testimonial.pk,
             category_id=testimonial.category_id,
@@ -267,7 +245,6 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         
         testimonial.reject(reason=reason, user=request.user)
         
-        # ✅ Cache invalidation respects USE_REDIS_CACHE internally
         TestimonialCacheService.invalidate_testimonial(
             testimonial_id=testimonial.pk,
             category_id=testimonial.category_id,
@@ -285,7 +262,6 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         testimonial = self.get_object()
         testimonial.feature(user=request.user)
         
-        # ✅ Cache invalidation respects USE_REDIS_CACHE internally
         TestimonialCacheService.invalidate_testimonial(
             testimonial_id=testimonial.pk,
             category_id=testimonial.category_id,
@@ -340,7 +316,6 @@ class TestimonialViewSet(viewsets.ModelViewSet):
                 testimonial.archive(user=request.user)
                 count += 1
         
-        # ✅ Cache invalidation respects USE_REDIS_CACHE internally
         TestimonialCacheService.invalidate_all()
         
         return Response({
@@ -355,13 +330,12 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['delete'], permission_classes=[permissions.IsAuthenticatedOrReadOnly])
     def remove_avatar(self, request, pk=None):
         """
-        🆕 NEW ENDPOINT: Remove avatar from testimonial.
+        Remove avatar from testimonial.
         Users can remove their own avatar, admins can remove any.
         """
         testimonial = self.get_object()
         user = request.user
         
-        # 🔒 Security: Users can only remove their own avatar
         if not (user.is_staff or user.is_superuser):
             if testimonial.author != user:
                 return Response(
@@ -398,14 +372,13 @@ class TestimonialCategoryViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """
-        ✅ FIXED: Explicitly handles USE_REDIS_CACHE setting.
+        Explicitly handles USE_CACHE setting.
         Get category statistics with appropriate caching.
         """
         def get_category_stats_data():
             return TestimonialCategory.objects.get_stats()
-        
-        # ✅ FIXED: Check setting explicitly
-        if app_settings.USE_REDIS_CACHE:
+
+        if app_settings.USE_CACHE:
             stats = TestimonialCacheService.get_or_set(
                 TestimonialCacheService.get_key('CATEGORY_STATS', id='all'),
                 get_category_stats_data,
@@ -429,7 +402,6 @@ class TestimonialMediaViewSet(viewsets.ModelViewSet):
     filterset_fields = ['testimonial', 'media_type']
     ordering_fields = ['created_at', 'order']
     ordering = ['order', 'created_at']
-    # ✅ FIX: Disable throttling
     throttle_classes = []
     
     def get_queryset(self):
@@ -457,7 +429,7 @@ class TestimonialMediaViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """
-        🔒 SECURITY: Ensure user can only add media to their own testimonials.
+        Ensure user can only add media to their own testimonials.
         """
         testimonial = serializer.validated_data['testimonial']
         user = self.request.user

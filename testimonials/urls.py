@@ -11,7 +11,6 @@ urlpatterns = [
     path('api/', include('testimonials.api.urls', namespace='api')),
 ]
 
-# ✅ Include dashboard URLs if enabled
 if app_settings.ENABLE_DASHBOARD:
     urlpatterns += [
         path('dashboard/', include('testimonials.dashboard.urls', namespace='dashboard')),

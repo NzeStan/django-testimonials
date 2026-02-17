@@ -46,9 +46,7 @@ dependencies = [
 
 [project.optional-dependencies]
 performance = [
-    "django-redis>=5.2.0",
-    "celery[redis]>=5.2.0",
-    "redis>=4.3.0",
+    "django-background-tasks>=1.2.5",
 ]
 dev = [
     "pytest>=7.0.0",
@@ -59,9 +57,7 @@ dev = [
     "pre-commit>=2.20.0",
     "factory-boy>=3.2.0",
     "Faker>=15.0.0",
-    "django-redis>=5.2.0",
-    "celery[redis]>=5.2.0",
-    "redis>=4.3.0",
+    "django-background-tasks>=1.2.5",
 ]
 
 [project.urls]
@@ -69,6 +65,18 @@ Homepage = "https://github.com/NzeStan/django-testimonials"
 Documentation = "https://django-testimonials.readthedocs.io/"
 Repository = "https://github.com/NzeStan/django-testimonials"
 "Bug Tracker" = "https://github.com/NzeStan/django-testimonials/issues"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+python_files = "test_*.py"
+python_classes = "Test*"
+testpaths = ["testimonials/tests"]
+pythonpath = ["."]
+addopts = "--nomigrations --reuse-db"
+norecursedirs = [".env", ".git", "testimonials/models"]
+filterwarnings = [
+    "ignore:The FORMS_URLFIELD_ASSUME_HTTPS transitional setting is deprecated:django.utils.deprecation.RemovedInDjango60Warning",
+]
 
 [tool.setuptools.packages.find]
 include = ["testimonials*"]

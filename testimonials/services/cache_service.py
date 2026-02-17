@@ -1,9 +1,3 @@
-# testimonials/services/cache_service.py
-
-"""
-Centralized cache management service with semantic timeout handling.
-"""
-
 import logging
 from django.core.cache import cache
 from ..conf import app_settings
@@ -81,8 +75,8 @@ class TestimonialCacheService:
     
     @classmethod
     def is_enabled(cls):
-        """Check if Redis cache is enabled."""
-        return app_settings.USE_REDIS_CACHE
+        """Check if cache is enabled."""
+        return app_settings.USE_CACHE
     
     @classmethod
     def get_timeout(cls, timeout=None, timeout_type=None):
@@ -141,7 +135,6 @@ class TestimonialCacheService:
             return None
         
         try:
-            # ✅ ALWAYS format - this validates required placeholders
             return pattern.format(**kwargs)
         except KeyError as e:
             logger.error(f"Missing key for pattern {pattern_name}: {e}")

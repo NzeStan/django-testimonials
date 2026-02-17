@@ -1,10 +1,3 @@
-# testimonials/tests/test_filters.py
-
-"""
-Comprehensive tests for testimonial filters.
-Tests cover all filter fields, combinations, edge cases, and custom filter methods.
-"""
-
 from django.test import TestCase, RequestFactory
 from django.contrib.auth import get_user_model
 from django.utils import timezone

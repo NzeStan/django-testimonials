@@ -1,10 +1,3 @@
-# testimonials/tests/test_forms.py
-
-"""
-Comprehensive tests for forms.
-Tests cover all forms, validation, edge cases, failures, and successes.
-"""
-
 from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile

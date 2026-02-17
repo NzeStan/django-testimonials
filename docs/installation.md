@@ -11,8 +11,7 @@ This comprehensive guide covers installation, setup, and configuration of Django
 - **Memory:** 512MB minimum (2GB+ recommended for production)
 
 ### **Optional Dependencies for Performance**
-- **Redis:** 6.0+ for caching and session storage
-- **Celery:** 5.0+ for background task processing
+- **django-background-tasks:** For database-backed background task processing (optional)
 - **nginx:** For production deployments
 
 ## 🚀 **Installation Methods**
@@ -228,137 +227,53 @@ TESTIMONIALS_ENABLE_MEDIA = True
 
 ## ⚡ **Performance Setup (Recommended)**
 
-### **Redis Installation & Configuration**
+### **Caching Configuration**
 
-#### **Install Redis**
-```bash
-# Ubuntu/Debian
-sudo apt-get install redis-server
-
-# macOS
-brew install redis
-
-# CentOS/RHEL
-sudo yum install redis
-
-# Start Redis
-sudo systemctl start redis
-```
-
-#### **Django Redis Configuration**
 ```python
 # settings.py
-INSTALLED_APPS += ['django_redis']
-
-# Cache configuration
+# Cache configuration (using Database Cache)
 CACHES = {
     'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': 'redis://localhost:6379/1',
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'CONNECTION_POOL_KWARGS': {
-                'max_connections': 20,
-                'retry_on_timeout': True,
-            },
-        },
-        'KEY_PREFIX': 'testimonials',
-        'VERSION': 1,
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'testimonials_cache_table',
     }
 }
 
-# Enable Redis caching for testimonials
-TESTIMONIALS_USE_REDIS_CACHE = True
-TESTIMONIALS_REDIS_CACHE_URL = 'redis://localhost:6379/1'
+# Enable caching for testimonials
+TESTIMONIALS_USE_CACHE = True
 TESTIMONIALS_CACHE_TIMEOUT = 900  # 15 minutes
 ```
 
-### **Celery Installation & Configuration**
-
-#### **Install Celery**
+#### **Create the Cache Table**
 ```bash
-pip install celery[redis]
+python manage.py createcachetable
 ```
 
-#### **Celery Configuration**
+### **Background Task Processing**
+
+#### **Install django-background-tasks**
+```bash
+pip install django-background-tasks
+```
+
+#### **Configuration**
 ```python
 # settings.py
-import os
+INSTALLED_APPS += ['background_task']
 
-# Celery configuration
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'UTC'
-
-# Enable Celery for testimonials
-TESTIMONIALS_USE_CELERY = True
-TESTIMONIALS_CELERY_BROKER_URL = 'redis://localhost:6379/0'
-
-# Periodic tasks
-from celery.schedules import crontab
-CELERY_BEAT_SCHEDULE = {
-    'cleanup-expired-cache': {
-        'task': 'testimonials.tasks.cleanup_expired_cache',
-        'schedule': crontab(minute=0, hour='*/6'),  # Every 6 hours
-    },
-    'generate-testimonial-stats': {
-        'task': 'testimonials.tasks.generate_testimonial_stats',
-        'schedule': crontab(minute=0, hour='*/1'),  # Every hour
-    },
-    'optimize-database': {
-        'task': 'testimonials.tasks.optimize_database',
-        'schedule': crontab(minute=0, hour=3),  # Daily at 3 AM
-    },
-}
+# Enable background tasks for testimonials
+TESTIMONIALS_USE_BACKGROUND_TASKS = True
 ```
 
-#### **Create Celery App**
-```python
-# celery.py (in your project root)
-import os
-from celery import Celery
-
-# Set the default Django settings module
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'your_project.settings')
-
-app = Celery('your_project')
-
-# Using a string here means the worker doesn't have to serialize
-# the configuration object to child processes.
-app.config_from_object('django.conf:settings', namespace='CELERY')
-
-# Load task modules from all registered Django app configs.
-app.autodiscover_tasks()
-
-@app.task(bind=True)
-def debug_task(self):
-    print(f'Request: {self.request!r}')
-```
-
-#### **Update __init__.py**
-```python
-# __init__.py (in your project root)
-from .celery import app as celery_app
-
-__all__ = ('celery_app',)
-```
-
-#### **Start Celery Workers**
+#### **Run Migrations**
 ```bash
-# In separate terminal windows
+python manage.py migrate
+```
 
-# Start Celery worker
-celery -A your_project worker --loglevel=info
-
-# Start Celery beat scheduler (for periodic tasks)
-celery -A your_project beat --loglevel=info
-
-# Optional: Start Celery flower for monitoring
-pip install flower
-celery -A your_project flower
+#### **Start the Task Runner**
+```bash
+# Run the background task processor
+python manage.py process_tasks
 ```
 
 ## 📧 **Email Configuration**
@@ -485,7 +400,7 @@ curl -X POST http://localhost:8000/api/testimonials/ \
 
 ### **4. Performance Verification**
 
-#### **Check Redis Connection**
+#### **Check Cache Connection**
 ```python
 # In Django shell: python manage.py shell
 from django.core.cache import cache
@@ -493,12 +408,11 @@ cache.set('test_key', 'test_value', 30)
 print(cache.get('test_key'))  # Should print: test_value
 ```
 
-#### **Check Celery Connection**
+#### **Check Background Tasks**
 ```python
 # In Django shell: python manage.py shell
-from testimonials.tasks import send_testimonial_notification_email
-result = send_testimonial_notification_email.delay('test_id', 'approved', 'test@example.com')
-print(f"Task ID: {result.id}")
+from background_task.models import Task
+print(f"Pending tasks: {Task.objects.count()}")
 ```
 
 ## 🚨 **Troubleshooting**
@@ -517,28 +431,26 @@ python manage.py makemigrations testimonials
 python manage.py migrate
 ```
 
-#### **Redis Connection Issues**
-```bash
-# Check Redis status
-redis-cli ping  # Should return: PONG
-
-# Check Redis logs
-sudo journalctl -u redis
-
-# Restart Redis
-sudo systemctl restart redis
+#### **Cache Issues**
+```python
+# In Django shell: python manage.py shell
+# Verify cache table exists
+from django.core.cache import cache
+try:
+    cache.set('test', 'value', 10)
+    print(cache.get('test'))  # Should print: value
+except Exception as e:
+    print(f"Cache error: {e}")
+    # Run: python manage.py createcachetable
 ```
 
-#### **Celery Issues**
+#### **Background Tasks Issues**
 ```bash
-# Check Celery worker status
-celery -A your_project status
+# Check for pending tasks
+python manage.py shell -c "from background_task.models import Task; print(f'Pending: {Task.objects.count()}')"
 
-# Purge all tasks
-celery -A your_project purge
-
-# Monitor tasks
-celery -A your_project events
+# Restart the task processor
+python manage.py process_tasks
 ```
 
 #### **File Upload Issues**
@@ -597,8 +509,6 @@ Create a `.env` file for sensitive settings:
 SECRET_KEY=your-secret-key-here
 DEBUG=False
 DATABASE_URL=postgresql://user:password@localhost/dbname
-REDIS_URL=redis://localhost:6379/1
-CELERY_BROKER_URL=redis://localhost:6379/0
 
 # Email settings
 EMAIL_HOST_USER=your-email@domain.com
@@ -666,11 +576,9 @@ CSRF_COOKIE_SECURE = True
 - [ ] Admin superuser created
 
 ### **Performance Setup (Optional)**
-- [ ] Redis installed and running
-- [ ] Redis cache configured
-- [ ] Celery installed
-- [ ] Celery workers running
-- [ ] Celery beat scheduler running
+- [ ] Cache backend configured
+- [ ] Background tasks configured (optional)
+- [ ] process_tasks command running (if using background tasks)
 - [ ] Email backend configured
 
 ### **Production Setup**

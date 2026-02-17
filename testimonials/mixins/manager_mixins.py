@@ -1,11 +1,4 @@
-# testimonials/mixins/manager_mixins.py
-
-"""
-Reusable manager mixins for statistics and aggregations.
-Eliminates duplication in manager statistics methods.
-"""
-
-from django.db.models import Count, Avg, Sum, Q, Case, When, IntegerField
+from django.db.models import Count, Case, When, IntegerField
 from django.utils.translation import gettext_lazy as _
 
 

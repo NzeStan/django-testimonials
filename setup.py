@@ -1,8 +1,3 @@
-"""
-Create/Fix setup.py to support pip install django-testimonials[performance]
-"""
-
-# setup.py
 from setuptools import setup, find_packages
 import os
 
@@ -22,9 +17,7 @@ INSTALL_REQUIRES = [
 
 # Performance extras
 PERFORMANCE_REQUIRES = [
-    'django-redis>=5.2.0',
-    'celery[redis]>=5.2.0',
-    'redis>=4.3.0',
+    'django-background-tasks>=1.2.5',
 ]
 
 # Development extras

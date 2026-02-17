@@ -1,10 +1,3 @@
-# testimonials/tests/test_validation_mixins.py
-
-"""
-Comprehensive tests for validation mixins.
-Tests cover all mixin methods, edge cases, and error handling.
-"""
-
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError

@@ -1,10 +1,3 @@
-# testimonials/tests/test_models.py
-
-"""
-Comprehensive model tests for django-testimonials package.
-Tests cover all angles: creation, validation, methods, edge cases, and failures.
-"""
-
 from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError

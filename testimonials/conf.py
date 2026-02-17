@@ -1,5 +1,3 @@
-# testimonials/conf.py
-
 from django.conf import settings
 
 
@@ -326,51 +324,28 @@ class AppSettings:
         """
         return getattr(settings, "TESTIMONIALS_DEFAULT_PHONE_REGION", "NG")
 
-    # ====== CELERY & ASYNC SETTINGS ======
-    
-    @property
-    def USE_CELERY(self):
-        """
-        Whether to use Celery for background tasks (email notifications, media processing).
-        Requires Celery to be installed and configured.
-        Default is False.
-        """
-        return getattr(settings, "TESTIMONIALS_USE_CELERY", False)
-    
-    @property
-    def CELERY_BROKER_URL(self):
-        """
-        Celery broker URL for testimonials tasks.
-        Default uses Django's CELERY_BROKER_URL or 'redis://localhost:6379/0'.
-        """
-        return getattr(
-            settings, 
-            "TESTIMONIALS_CELERY_BROKER_URL",
-            getattr(settings, "CELERY_BROKER_URL", "redis://localhost:6379/0")
-        )
+    # ====== BACKGROUND TASKS & ASYNC SETTINGS ======
 
-    # ====== REDIS & CACHE SETTINGS ======
-    
     @property
-    def USE_REDIS_CACHE(self):
+    def USE_BACKGROUND_TASKS(self):
         """
-        Whether to use Redis for caching queries and data.
-        Requires Redis to be installed and configured.
+        Whether to use background threads for async tasks (email notifications, media processing).
+        When enabled, tasks like emails and media processing run in background threads.
         Default is False.
         """
-        return getattr(settings, "TESTIMONIALS_USE_REDIS_CACHE", False)
-    
+        return getattr(settings, "TESTIMONIALS_USE_BACKGROUND_TASKS", False)
+
+    # ====== CACHE SETTINGS ======
+
     @property
-    def REDIS_CACHE_URL(self):
+    def USE_CACHE(self):
         """
-        Redis cache URL for testimonials caching.
-        Default uses Django's CACHES['default'] or 'redis://localhost:6379/1'.
+        Whether to use Django's cache framework for caching queries and data.
+        Uses whatever cache backend is configured in Django's CACHES setting
+        (e.g., DatabaseCache, LocMemCache, FileBasedCache).
+        Default is False.
         """
-        return getattr(
-            settings,
-            "TESTIMONIALS_REDIS_CACHE_URL",
-            "redis://localhost:6379/1"
-        )
+        return getattr(settings, "TESTIMONIALS_USE_CACHE", False)
     
     # ====== CACHE TIMEOUT SETTINGS ======
     
@@ -452,7 +427,7 @@ class AppSettings:
     def ENABLE_THUMBNAILS(self):
         """
         Whether to automatically generate thumbnails for image uploads.
-        Requires Pillow and either Celery (for async) or synchronous processing.
+        Requires Pillow. Processing runs in background threads when enabled.
         Default is True.
         """
         return getattr(settings, "TESTIMONIALS_ENABLE_THUMBNAILS", True)

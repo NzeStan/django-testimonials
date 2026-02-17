@@ -1,10 +1,3 @@
-# testimonials/tests/test_views.py
-
-"""
-Comprehensive API view tests for django-testimonials package.
-Tests cover all endpoints, permissions, actions, and edge cases.
-"""
-
 from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.urls import reverse
@@ -19,7 +12,6 @@ import io
 from testimonials.models import Testimonial, TestimonialCategory, TestimonialMedia
 from testimonials.constants import (
     TestimonialStatus,
-    TestimonialSource,
     TestimonialMediaType
 )
 
@@ -351,14 +343,10 @@ class TestimonialCreateAPITests(APITestCaseBase):
             'is_anonymous': True,
             'author_name': 'Anonymous User',
             'author_email': 'anon@example.com',
-            # ✅ ADD these if they are required by your model/serializer:
-            # 'author_phone': '+1234567890',  # if required
-            # 'category': self.category1.id,  # if category is required
         }
         
         response = self.client.post(url, data, format='json')
         
-        # ✅ Debug: if still failing, print the error to see what's wrong
         if response.status_code != status.HTTP_201_CREATED:
             print(f"Error creating anonymous testimonial: {response.data}")
         
@@ -379,13 +367,10 @@ class TestimonialCreateAPITests(APITestCaseBase):
             'author_title': 'CEO',
             'website': 'https://example.com',
             'social_media': {'twitter': '@example'},
-            # ✅ Remove any admin-only fields that might be in the data:
-            # Don't include: status, approved_at, approved_by, etc.
         }
         
         response = self.client.post(url, data, format='json')
         
-        # ✅ Debug: if still failing, print the error
         if response.status_code != status.HTTP_201_CREATED:
             print(f"Error creating testimonial with all fields: {response.data}")
         
@@ -906,7 +891,7 @@ class TestimonialBulkActionsAPITests(APITestCaseBase):
         data = {
             'action': 'reject',
             'testimonial_ids': [t.id for t in self.testimonials[:2]],
-            'reason': 'Quality standards not met'  # ✅ CHANGED from 'rejection_reason' to 'reason'
+            'reason': 'Quality standards not met'  
         }
         
         response = self.client.post(url, data, format='json')

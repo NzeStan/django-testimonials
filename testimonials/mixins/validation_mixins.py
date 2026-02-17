@@ -1,9 +1,3 @@
-# testimonials/mixins/validation_mixins.py
-
-"""
-Centralized validation mixins to eliminate duplication across serializers and forms.
-"""
-
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
@@ -154,7 +148,6 @@ class AnonymousUserValidationMixin:
             ValidationError: If policy violated (compatible with forms and serializers)
         """
         if is_anonymous and not allow_anonymous:
-            # Use Django's ValidationError which works in both contexts
             from django.core.exceptions import ValidationError
             raise ValidationError(
                 _("Anonymous testimonials are not allowed."),

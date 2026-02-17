@@ -1,10 +1,3 @@
-# testimonials/mixins/__init__.py
-
-"""
-Mixins package for reusable components.
-Eliminates code duplication across the package.
-"""
-
 from .validation_mixins import (
     FileValidationMixin,
     AnonymousUserValidationMixin,

@@ -1,5 +1,3 @@
-# testimonials/dashboard/views.py - WITH SEMANTIC TIMEOUTS
-
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
@@ -130,11 +128,11 @@ def dashboard_overview(request):
         }
     
     # Use semantic helper method for dashboard data (volatile)
-    if app_settings.USE_REDIS_CACHE:
+    if app_settings.USE_CACHE:
         data = TestimonialCacheService.get_or_set(
             TestimonialCacheService.get_key('DASHBOARD_OVERVIEW'),
             get_dashboard_data,
-            timeout_type='volatile'  # ✅ Uses CACHE_TIMEOUT_SHORT (5 minutes)
+            timeout_type='volatile' 
         )
     else:
         data = get_dashboard_data()
@@ -163,11 +161,11 @@ def dashboard_analytics(request):
             'media_stats': media_stats,
         }
     
-    if app_settings.USE_REDIS_CACHE:
+    if app_settings.USE_CACHE:
         data = TestimonialCacheService.get_or_set(
             TestimonialCacheService.get_key('DASHBOARD_ANALYTICS'),
             get_analytics_data,
-            timeout_type='stats'  # ✅ Uses CACHE_TIMEOUT_STATS (30 minutes)
+            timeout_type='stats' 
         )
     else:
         data = get_analytics_data()
@@ -217,11 +215,11 @@ def dashboard_categories(request):
             avg_rating=Avg('testimonials__rating')
         ).order_by('-total')
     
-    if app_settings.USE_REDIS_CACHE:
+    if app_settings.USE_CACHE:
         categories = TestimonialCacheService.get_or_set(
             TestimonialCacheService.get_key('CATEGORY_STATS', id='dashboard'),
             get_categories_data,
-            timeout_type='stable'  # ✅ Uses CACHE_TIMEOUT_LONG (1 hour)
+            timeout_type='stable' 
         )
     else:
         categories = get_categories_data()

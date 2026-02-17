@@ -1,5 +1,3 @@
-# testimonials/tests/test_templates.py
-
 from django.test import TestCase, RequestFactory
 from django.contrib.auth import get_user_model
 from django.template import Context, Template
@@ -124,7 +122,7 @@ class EmailTemplateTests(TestCase):
         """Test new testimonial email with all optional fields."""
         self.testimonial.author_phone = '+1234567890'
         self.testimonial.company = 'ACME Corp'
-        self.testimonial.author_title = 'CEO'  # ✅ Fixed: use author_title, not job_title
+        self.testimonial.author_title = 'CEO'  
         self.testimonial.location = 'New York'
         self.testimonial.save()
         
@@ -373,7 +371,7 @@ class DashboardTemplateTests(TestCase):
             'request': request,
             'title': 'Moderation Queue',
             'pending_testimonials': pending,
-            'pending_count': len(pending),  # ✅ Added missing context variable
+            'pending_count': len(pending), 
         }
         
         html = render_to_string(
@@ -396,7 +394,7 @@ class DashboardTemplateTests(TestCase):
             'request': request,
             'title': 'Moderation Queue',
             'pending_testimonials': [],
-            'pending_count': 0,  # ✅ Added missing context variable
+            'pending_count': 0,  
         }
         
         html = render_to_string(
@@ -421,7 +419,7 @@ class DashboardTemplateTests(TestCase):
         )
         
         categories_data = [{
-            'pk': test_category.pk,  # ✅ Fixed: template uses pk, not id
+            'pk': test_category.pk,  
             'name': test_category.name,
             'slug': test_category.slug,
             'description': test_category.description,
@@ -436,7 +434,7 @@ class DashboardTemplateTests(TestCase):
             'request': request,
             'title': 'Categories',
             'categories': categories_data,
-            'total_categories': 1,  # ✅ Added missing context variable
+            'total_categories': 1,  
         }
         
         html = render_to_string(
@@ -527,7 +525,7 @@ class DashboardTemplateTests(TestCase):
             'request': request,
             'title': 'Moderation',
             'pending_testimonials': [testimonial],
-            'pending_count': 1,  # ✅ Added missing context variable
+            'pending_count': 1,  
         }
         
         html = render_to_string(

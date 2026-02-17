@@ -1,10 +1,3 @@
-# testimonials/tests/test_dashboard_views.py
-
-"""
-Comprehensive tests for dashboard views.
-Tests cover permissions, data accuracy, edge cases, caching, and all dashboard endpoints.
-"""
-
 from django.test import TestCase, override_settings, RequestFactory
 from django.contrib.auth import get_user_model
 from django.urls import reverse
@@ -30,7 +23,7 @@ User = get_user_model()
 
 @override_settings(
     TESTIMONIALS_ENABLE_DASHBOARD=True,
-    TESTIMONIALS_USE_REDIS_CACHE=False,  # Disable cache for testing
+    TESTIMONIALS_USE_CACHE=False,  # Disable cache for testing
 )
 class DashboardTestCase(TestCase):
     """Base test case for dashboard views."""
@@ -543,7 +536,7 @@ class DashboardAnalyticsTests(DashboardTestCase):
         
         stats = response.context['testimonial_stats']
         self.assertIn('total', stats)
-        self.assertIn('avg_rating', stats)  # FIX: Use 'avg_rating' not 'average_rating'
+        self.assertIn('avg_rating', stats)  
     
     def test_analytics_media_stats(self):
         """Test that media stats are included."""
@@ -811,7 +804,7 @@ class DashboardCategoriesTests(DashboardTestCase):
 # CACHING TESTS
 # ============================================================================
 
-@override_settings(TESTIMONIALS_USE_REDIS_CACHE=True)
+@override_settings(TESTIMONIALS_USE_CACHE=True)
 class DashboardCachingTests(DashboardTestCase):
     """Tests for dashboard caching behavior."""
     

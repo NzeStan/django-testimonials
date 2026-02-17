@@ -1,10 +1,3 @@
-# testimonials/tests/test_serializers.py
-
-"""
-Comprehensive tests for testimonial serializers.
-Tests field validation, permissions, file uploads, edge cases, and failures.
-"""
-
 from django.test import TestCase, RequestFactory, override_settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile

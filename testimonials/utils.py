@@ -1,10 +1,3 @@
-# testimonials/utils.py - REFACTORED
-
-"""
-Utility functions for the testimonials app.
-Refactored to use services for cache and task management.
-"""
-
 import logging
 import os
 from django.utils import timezone

@@ -1,11 +1,3 @@
-# testimonials/tests/test_admin.py
-
-"""
-Comprehensive tests for Django admin configuration.
-Tests cover admin registration, actions, display methods, forms, filters,
-search functionality, permissions, and edge cases.
-"""
-
 from django.test import TestCase, RequestFactory
 from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import get_user_model

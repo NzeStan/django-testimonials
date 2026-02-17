@@ -13,7 +13,7 @@ A **high-performance**, **enterprise-grade** Django package for managing custome
 - **⚡ Sub-100ms API responses** with intelligent caching
 - **📊 Optimized database queries** with strategic indexing
 - **🔄 Background processing** for emails and media
-- **📈 Horizontal scaling ready** with Redis and Celery support
+- **📈 Horizontal scaling ready** with background task support
 - **💾 Smart caching strategies** with automatic invalidation
 
 ## ✨ **Enterprise Features**
@@ -27,8 +27,8 @@ A **high-performance**, **enterprise-grade** Django package for managing custome
 - 👤 **Anonymous testimonials** with privacy controls
 
 ### **Performance & Scalability**
-- 🚄 **Redis caching** for lightning-fast responses
-- ⚡ **Celery integration** for background processing
+- 🚄 **Smart caching** for lightning-fast responses
+- ⚡ **Background task processing** with threading support
 - 🔍 **Full-text search** with optimized queries
 - 📊 **Real-time statistics** with cached aggregations
 - 🔄 **Bulk operations** for efficient moderation
@@ -50,8 +50,7 @@ A **high-performance**, **enterprise-grade** Django package for managing custome
 - **django-filter:** 2.4.0+
 
 ### **Optional (for performance features):**
-- **Redis:** For caching and session storage
-- **Celery:** For background task processing
+- **django-background-tasks:** For database-backed background task processing
 
 ## 🚀 **Quick Start**
 
@@ -119,49 +118,43 @@ featured = Testimonial.objects.featured()
 
 ## 🔧 **Performance Configuration**
 
-### **Redis Caching (Recommended)**
+### **Caching (Recommended)**
 
 ```python
 # settings.py
-TESTIMONIALS_USE_REDIS_CACHE = True
-TESTIMONIALS_REDIS_CACHE_URL = "redis://localhost:6379/1"
+TESTIMONIALS_USE_CACHE = True
 TESTIMONIALS_CACHE_TIMEOUT = 900  # 15 minutes
 
-# Configure Django cache backend
+# Configure Django cache backend (Database Cache example)
 CACHES = {
     'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': 'redis://localhost:6379/1',
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        }
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'testimonials_cache_table',
     }
 }
 ```
 
-### **Celery Background Processing (Recommended)**
+Then run:
+```bash
+python manage.py createcachetable
+```
+
+### **Background Task Processing (Recommended)**
 
 ```python
 # settings.py
-TESTIMONIALS_USE_CELERY = True
-TESTIMONIALS_CELERY_BROKER_URL = "redis://localhost:6379/0"
+TESTIMONIALS_USE_BACKGROUND_TASKS = True
 
-# Celery configuration
-CELERY_BROKER_URL = "redis://localhost:6379/0"
-CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
+# Add django-background-tasks to INSTALLED_APPS
+INSTALLED_APPS += ['background_task']
 
-# Add periodic tasks
-from celery.schedules import crontab
-CELERY_BEAT_SCHEDULE = {
-    'cleanup-expired-cache': {
-        'task': 'testimonials.tasks.cleanup_expired_cache',
-        'schedule': crontab(minute=0, hour='*/6'),  # Every 6 hours
-    },
-    'generate-testimonial-stats': {
-        'task': 'testimonials.tasks.generate_testimonial_stats',
-        'schedule': crontab(minute=0, hour='*/1'),  # Every hour
-    },
-}
+# Run migrations for background_task
+# python manage.py migrate
+```
+
+Process tasks with:
+```bash
+python manage.py process_tasks
 ```
 
 ### **Email Notifications**
@@ -185,13 +178,13 @@ DEFAULT_FROM_EMAIL = 'Your Site <noreply@yoursite.com>'
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Frontend      │    │   Django API    │    │   Background    │
-│   (React/Vue)   │◄──►│   (REST API)    │◄──►│   (Celery)      │
+│   (React/Vue)   │◄──►│   (REST API)    │◄──►│   (Threads)     │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                               │                        │
                               ▼                        ▼
                     ┌─────────────────┐    ┌─────────────────┐
-                    │   PostgreSQL    │    │     Redis       │
-                    │   (Database)    │    │  (Cache/Queue)  │
+                    │   PostgreSQL    │    │  Django Cache    │
+                    │   (Database)    │    │  (DB/LocMem)     │
                     └─────────────────┘    └─────────────────┘
 ```
 
@@ -288,11 +281,12 @@ const featured = await fetch('/api/testimonials/featured/');
 ```python
 # In your admin or management command
 from testimonials.models import Testimonial
-from testimonials.tasks import bulk_moderate
 
-# Approve multiple testimonials asynchronously
+# Approve multiple testimonials
 testimonial_ids = [1, 2, 3, 4, 5]
-bulk_moderate.delay(testimonial_ids, 'approve', user_id=request.user.id)
+testimonials = Testimonial.objects.filter(id__in=testimonial_ids)
+for t in testimonials:
+    t.approve(user=request.user)
 ```
 
 ## 🔒 **Security Features**
@@ -340,12 +334,12 @@ LANGUAGES = [
 
 ```python
 # Performance & Caching
-TESTIMONIALS_USE_REDIS_CACHE = True
+TESTIMONIALS_USE_CACHE = True
 TESTIMONIALS_CACHE_TIMEOUT = 900
 TESTIMONIALS_CACHE_KEY_PREFIX = "testimonials"
 
 # Background Processing
-TESTIMONIALS_USE_CELERY = True
+TESTIMONIALS_USE_BACKGROUND_TASKS = True
 TESTIMONIALS_EMAIL_RATE_LIMIT = 60
 
 # File Handling

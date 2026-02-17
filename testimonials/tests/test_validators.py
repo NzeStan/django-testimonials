@@ -1,10 +1,3 @@
-# testimonials/tests/test_validators.py
-
-"""
-Comprehensive tests for testimonial validators.
-Tests cover all validator functions, edge cases, failures, and successes.
-"""
-
 from django.test import TestCase, override_settings
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
