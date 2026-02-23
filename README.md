@@ -1,8 +1,8 @@
 # Django Testimonials
 
-[![PyPI version](https://badge.fury.io/py/django-testimonials.svg)](https://badge.fury.io/py/django-testimonials)
-[![Build Status](https://github.com/NzeStan/django-testimonials/actions/workflows/tests.yml/badge.svg)](https://github.com/NzeStan/django-testimonials/actions)
-[![Documentation Status](https://readthedocs.org/projects/django-testimonials/badge/?version=latest)](https://django-testimonials.readthedocs.io/en/latest/?badge=latest)
+[![PyPI version](https://badge.fury.io/py/django-testimonials.svg)](https://pypi.org/project/django-testimonials/)
+[![Build Status](https://github.com/NzeStan/django-testimonials/actions/workflows/tests.yml/badge.svg)](https://github.com/NzeStan/django-testimonials/actions/workflows/tests.yml)
+[![Documentation Status](https://readthedocs.org/projects/django-testimonials/badge/?version=latest)](https://django-testimonials.readthedocs.io/en/latest/)
 [![Coverage Status](https://coveralls.io/repos/github/NzeStan/django-testimonials/badge.svg?branch=main)](https://coveralls.io/github/NzeStan/django-testimonials?branch=main)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -395,25 +395,47 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## 📚 **Documentation**
 
-- **[Installation Guide](docs/installation.md)** - Detailed setup instructions
-- **[Configuration](docs/configuration.md)** - All configuration options
-- **[API Reference](docs/api.md)** - Complete API documentation
-- **[Performance Guide](docs/performance.md)** - Optimization strategies
-- **[Deployment Guide](docs/deployment.md)** - Production deployment
-- **[Customization](docs/customization.md)** - Extending the package
+Installation Guide
+https://github.com/NzeStan/django-testimonials/blob/main/docs/installation.md
+
+Configuration Guide
+https://github.com/NzeStan/django-testimonials/blob/main/docs/configuration.md
+
+API Reference
+https://github.com/NzeStan/django-testimonials/blob/main/docs/api.md
+
+Performance Guide
+https://github.com/NzeStan/django-testimonials/blob/main/docs/performance.md
+
+Deployment Guide
+https://github.com/NzeStan/django-testimonials/blob/main/docs/deployment.md
+
+Customization Guide
+https://github.com/NzeStan/django-testimonials/blob/main/docs/customization.md
 
 ## 📄 **License**
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/NzeStan/django-testimonials/blob/main/LICENSE) file for details.
 
-## 🙏 **Acknowledgments**
+🙏 Acknowledgments
 
-- Built with [Django](https://djangoproject.com/) and [Django REST Framework](https://www.django-rest-framework.org/)
-- Performance optimizations inspired by high-scale web applications
-- Icons and design elements from the open-source community
+Built with Django – https://djangoproject.com/
 
----
+Built with Django REST Framework – https://www.django-rest-framework.org/
 
-**⭐ If this package helped you, please give it a star!**
+Performance optimizations inspired by high-scale web applications
 
-[Report Issues](https://github.com/NzeStan/django-testimonials/issues) • [Request Features](https://github.com/NzeStan/django-testimonials/discussions) • [Documentation](https://django-testimonials.readthedocs.io/)
+Icons and design elements from the open-source community
+
+⭐ Support the Project
+
+If this package helped you, please give it a star ⭐
+
+Report Issues:
+https://github.com/NzeStan/django-testimonials/issues
+
+Request Features / Discussions:
+https://github.com/NzeStan/django-testimonials/discussions
+
+Documentation:
+https://django-testimonials.readthedocs.io/

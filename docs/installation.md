@@ -589,21 +589,35 @@ CSRF_COOKIE_SECURE = True
 - [ ] Monitoring configured
 - [ ] Backup strategy implemented
 
-## 📚 **Next Steps**
+📚 Next Steps
 
-1. **[Configuration Guide](configuration.md)** - Explore all configuration options
-2. **[Usage Guide](usage.md)** - Learn how to use all features
-3. **[API Documentation](api.md)** - Complete API reference
-4. **[Performance Guide](performance.md)** - Optimization strategies
-5. **[Deployment Guide](deployment.md)** - Production deployment
+Configuration Guide
+https://github.com/NzeStan/django-testimonials/blob/main/docs/configuration.md
 
-## 🆘 **Getting Help**
+Usage Guide
+https://github.com/NzeStan/django-testimonials/blob/main/docs/usage.md
+
+API Documentation
+https://github.com/NzeStan/django-testimonials/blob/main/docs/api.md
+
+Performance Guide
+https://github.com/NzeStan/django-testimonials/blob/main/docs/performance.md
+
+Deployment Guide
+https://github.com/NzeStan/django-testimonials/blob/main/docs/deployment.md
+
+🆘 Getting Help
 
 If you encounter issues:
 
-1. **Check the documentation** - Most common issues are covered
-2. **Search existing issues** - [GitHub Issues](https://github.com/NzeStan/django-testimonials/issues)
-3. **Create a new issue** - Include your configuration and error details
-4. **Join discussions** - [GitHub Discussions](https://github.com/NzeStan/django-testimonials/discussions)
+Check the documentation
 
-**Pro Tip:** Include your Django version, Python version, and relevant configuration when asking for help!
+Search existing issues:
+https://github.com/NzeStan/django-testimonials/issues
+
+Create a new issue (include config + error details)
+
+Join discussions:
+https://github.com/NzeStan/django-testimonials/discussions
+
+Pro Tip: Include your Django version, Python version, and relevant configuration when asking for help.

@@ -21,6 +21,8 @@ from ..validators import (
     validate_rating, 
     validate_testimonial_content, 
     create_file_size_validator,
+    validate_avatar_size,          # new
+    validate_media_file_size,
     create_avatar_size_validator,
     image_dimension_validator,
 )
@@ -174,7 +176,7 @@ class Testimonial(BaseModel):
         upload_to=generate_upload_path,
         blank=True,
         null=True,
-        validators=[create_avatar_size_validator(), image_dimension_validator],
+        validators=[validate_avatar_size, image_dimension_validator],
         verbose_name=_("Avatar"),
         help_text=_("Profile picture of the testimonial author.")
     )
@@ -555,7 +557,7 @@ class TestimonialMedia(BaseModel):
     )
     file = models.FileField(
         upload_to=generate_upload_path,
-        validators=[create_file_size_validator(file_type="media file")],
+        validators=[validate_media_file_size],
         verbose_name=_("File"),
         help_text=_("Upload the media file.")
     )

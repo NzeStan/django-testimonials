@@ -164,3 +164,30 @@ def image_dimension_validator(image):
             )
     except Exception as e:
         raise ValidationError(_("Invalid image file: %(error)s") % {'error': str(e)})
+    
+def validate_avatar_size(file):
+    """Named module-level validator for avatar size. Migration-serializable."""
+    max_size_bytes = getattr(app_settings, 'MAX_AVATAR_SIZE', app_settings.MAX_FILE_SIZE)
+    max_size_mb = max_size_bytes / (1024 * 1024)
+    if file.size > max_size_bytes:
+        current_size_mb = file.size / (1024 * 1024)
+        raise ValidationError(
+            _("Avatar is too large (%(current)0.1f MB). Maximum size is %(max)0.1f MB.") % {
+                'current': current_size_mb,
+                'max': max_size_mb
+            }
+        )
+
+
+def validate_media_file_size(file):
+    """Named module-level validator for media file size. Migration-serializable."""
+    max_size_bytes = app_settings.MAX_FILE_SIZE
+    max_size_mb = max_size_bytes / (1024 * 1024)
+    if file.size > max_size_bytes:
+        current_size_mb = file.size / (1024 * 1024)
+        raise ValidationError(
+            _("Media file is too large (%(current)0.1f MB). Maximum size is %(max)0.1f MB.") % {
+                'current': current_size_mb,
+                'max': max_size_mb
+            }
+        )
